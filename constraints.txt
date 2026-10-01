@@ -1,6 +1,6 @@
 # Exact public-package versions reviewed for Python 3.12/3.13.
 altgraph==0.17.5
-certifi==2026.6.17
+certifi==2026.7.22
 charset-normalizer==3.4.9
 et-xmlfile==2.0.0
 greenlet==3.5.6
