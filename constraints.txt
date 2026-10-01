@@ -14,7 +14,7 @@ packaging==26.2
 pandas==3.0.3
 pefile==2024.8.26
 playwright==1.63.0
-plotly==6.9.0
+plotly==7.1.0
 pluggy==1.6.0
 pyee==13.0.1
 pygments==2.20.0
