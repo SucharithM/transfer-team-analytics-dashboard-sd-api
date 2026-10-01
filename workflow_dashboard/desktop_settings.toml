@@ -1,0 +1,9 @@
+# Nonsecret manager-facing defaults. No tokens, cookies, or passwords belong here.
+api_url = "https://tenant.example.test/flow/api/user-dashboard/packages"
+dashboard_title = "Transfer Credit Evaluation Executive Dashboard"
+workflow_filter = "Example  Transcript Evaluation Form"
+api_take = 100
+status_filters = ["NeedsReview", "InProgress", "Completed"]
+minimum_wait_completeness = 0.95
+minimum_idle_completeness = 0.95
+minimum_completion_completeness = 0.95

@@ -1,0 +1,2 @@
+# Reviewed installer version; upgrade this before installing application packages.
+pip==26.2.0

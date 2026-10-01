@@ -1,0 +1,9 @@
+# Runtime versions reviewed for the public release.
+-c constraints.txt
+pandas==3.0.3
+requests==2.34.2
+python-dotenv==1.2.2
+plotly==6.9.0
+openpyxl==3.1.5
+playwright==1.63.0
+urllib3==2.8.0
