@@ -7,7 +7,7 @@ greenlet==3.5.6
 idna==3.18
 iniconfig==2.3.0
 macholib==1.16.4
-narwhals==2.23.0
+narwhals==2.26.0
 numpy==2.5.1
 openpyxl==3.1.5
 packaging==26.2
