@@ -123,6 +123,15 @@ Browser/file-manager opening happens off the UI thread. Opening failures appear
 separately from generation status, and delayed notifications from earlier runs
 are ignored. The destination path supports text selection and copying.
 
+After an error or warning, **Send Error Logs** opens technical diagnostics with
+**Copy Logs** for pasting into a support message. Earlier affected attempts remain
+selectable during the session, including after a successful retry. The button is
+disabled while generation is active. Settings-load failures retain a small window
+with the same copy action. Reports include stage outcomes, versions, approved
+error categories, and numeric error codes; they exclude credentials, workflow
+records, settings, and personal/system paths. Diagnostics are kept only in memory;
+the app does not save or transmit log files. See SECURITY.md for the exact rules.
+
 Desktop HTML, workbook, and CSV exports are written to a dated subfolder inside
 the selected folder. Reporting history stays per Windows user regardless of
 export destination:
@@ -171,7 +180,10 @@ release.
 
 ### Windows executable build
 
-Use Python 3.12 or newer on Windows (Python 3.13 is the tested version). No browser binary is bundled; the desktop user
+Use Python 3.12 or newer on Windows (Python 3.13 is the tested version), with Git
+available on the build machine's command-line PATH (`git --version` must work).
+The publication-check tests require Git even when the source was downloaded as
+a ZIP. No browser binary is bundled; the desktop user
 needs installed Edge but does not need Python or a console. Build from a Windows virtual environment:
 
 ```powershell

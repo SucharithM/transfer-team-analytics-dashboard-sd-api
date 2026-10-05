@@ -21,7 +21,7 @@ def _render(tmp_path, config, df=None):
     path = tmp_path / 'dashboard.html'
     render_dashboard(df=df, analytics=analytics, history=pd.DataFrame(),
                      owner_history=pd.DataFrame(), output_path=path)
-    return analytics, path.read_text()
+    return analytics, path.read_text(encoding='utf-8')
 
 
 @pytest.mark.parametrize('title', ['Transfer Credit Evaluation Executive Dashboard', 'Review <Cases> & Timing'])

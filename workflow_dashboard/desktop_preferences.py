@@ -5,8 +5,10 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from .diagnostics import emit, operation
 
 
+@operation('preferences.load')
 def load_output_directory(preferences_file: Path) -> Path | None:
     """Ignore missing, damaged, or incompatible preferences without guessing paths."""
     try:
@@ -19,7 +21,10 @@ def load_output_directory(preferences_file: Path) -> Path | None:
             return None
         path = Path(directory)
         return path if path.is_absolute() else None
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as error:
+        emit('preferences.load.failed', error=error)
         return None
 
 

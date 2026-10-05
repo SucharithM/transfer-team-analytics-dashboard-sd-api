@@ -5,9 +5,19 @@ import ctypes
 import os
 import signal
 from ctypes import wintypes
+from .diagnostics import operation
+
+
+def supervision_error(message):
+    error = OSError(message)
+    number = getattr(ctypes, 'get_last_error', lambda: None)()
+    if type(number) is int and 0 <= number <= 65535:
+        error.winerror = number
+    return error
 
 
 class ProcessGuard:
+    @operation('supervision.create')
     def __init__(self):
         self.handle = None
         self.pid = None
@@ -42,26 +52,29 @@ class ProcessGuard:
         self.kernel.CloseHandle.restype = wintypes.BOOL
         self.handle = self.kernel.CreateJobObjectW(None, None)
         if not self.handle:
-            raise OSError("Cannot create authentication process supervisor.")
+            raise supervision_error("Cannot create authentication process supervisor.")
         limits = Extended()
         limits.basic.flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         if not self.kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            error = supervision_error("Cannot configure authentication process supervisor.")
             self.close()
-            raise OSError("Cannot configure authentication process supervisor.")
+            raise error
 
+    @operation('supervision.attach')
     def attach(self, pid: int) -> None:
         self.pid = pid
         if os.name != "nt":
             return
         process = self.kernel.OpenProcess(0x0101, False, pid)  # SET_QUOTA | TERMINATE
         if not process:
-            raise OSError("Cannot supervise authentication worker.")
+            raise supervision_error("Cannot supervise authentication worker.")
         try:
             if not self.kernel.AssignProcessToJobObject(self.handle, process):
-                raise OSError("Workplace policy prevented authentication process supervision.")
+                raise supervision_error("Workplace policy prevented authentication process supervision.")
         finally:
             self.kernel.CloseHandle(process)
 
+    @operation('supervision.close')
     def close(self) -> None:
         if self.handle is not None:
             self.kernel.CloseHandle(self.handle)
