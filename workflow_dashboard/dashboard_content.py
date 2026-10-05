@@ -111,6 +111,10 @@ class PageContent:
     author_name: str
     intro_paragraphs: tuple[str, ...]
     jump_to_top: str
+    save_pdf: str
+    save_pdf_hint: str
+    preparing_pdf: str
+    pdf_error: str
 
 
 @dataclass(frozen=True)
@@ -210,6 +214,10 @@ PAGE = PageContent(
         "Completion dates are estimated from the last recorded update.",
     ),
     jump_to_top="Jump to top",
+    save_pdf="Save as PDF",
+    save_pdf_hint="Choose Save as PDF in the print dialog.",
+    preparing_pdf="Preparing charts for PDF...",
+    pdf_error="Could not prepare the PDF. Please try again.",
 )
 
 COMMON = CommonContent(
