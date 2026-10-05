@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 
 from . import dashboard_content as content
+from .dashboard_print import PRINT_STYLES, export_script
 from .analytics import (
     AGING_BAND_LABELS,
     AnalyticsBundle,
@@ -1277,6 +1278,10 @@ def _plot_divs(
             include_plotlyjs=include_plotlyjs,
             full_html=False,
             div_id=f"plot-{key.replace('_', '-')}",
+            post_script=(
+                "document.getElementById('{plot_id}').dataset.pdfReady = 'true';"
+                "document.dispatchEvent(new Event('dashboard-chart-ready'));"
+            ),
             config={
                 "responsive": True,
                 "displaylogo": False,
@@ -2359,6 +2364,7 @@ def render_dashboard(
     @media (prefers-reduced-motion: reduce) {{
       html {{ scroll-behavior: auto; }}
     }}
+{PRINT_STYLES}
   </style>
 </head>
 <body>
@@ -2372,6 +2378,11 @@ def render_dashboard(
         <div class="header-meta">
           <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
           <div class="date-badge">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</div>
+          <div class="pdf-export">
+            <button type="button" id="save-pdf" aria-describedby="pdf-export-hint">{html.escape(page_copy.save_pdf)}</button>
+            <p id="pdf-export-hint">{html.escape(page_copy.save_pdf_hint)}</p>
+            <p class="pdf-export-status" id="pdf-export-status" role="status" aria-live="polite"></p>
+          </div>
         </div>
       </div>
 {intro_html}
@@ -2472,6 +2483,7 @@ def render_dashboard(
       <a class="jump-to-top" href="#dashboard-top">{html.escape(page_copy.jump_to_top)}</a>
     </footer>
   </main>
+  {export_script(_json_for_script)}
 </body>
 </html>
 """

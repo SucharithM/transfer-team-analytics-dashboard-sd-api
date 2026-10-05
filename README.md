@@ -343,6 +343,27 @@ Each run writes a new timestamped set of files to a Boston-dated directory such 
 
 The date, weekday, timestamp, and timezone in these paths all use Boston local time. Previous run files are retained.
 
+To save a PDF, open the HTML report and select **Save as PDF** in its header.
+The report prepares its charts locally, then opens the browser print dialog.
+Choose **Save as PDF** (or your system's PDF printer), a filename, and a destination.
+The print layout defaults to US Letter landscape with 10 mm margins; browser
+settings can override these defaults. Turn off browser headers and footers to
+omit the local file URL. PDF export works offline in Chrome and Edge and creates
+no additional file during normal audit generation.
+
+The PDF includes all report sections, the observations already displayed in the
+HTML (up to 100, with the existing count notice), and any currently open case
+drilldown. Save or cancel the dialog to return to the interactive report. If
+chart preparation fails, the report shows a retry message. Previously generated
+HTML files do not receive this feature automatically.
+
+Real browser PDF checks are opt-in and require an installed Chrome or Edge.
+Run `python -m pytest -q tests/test_dashboard_pdf.py` with
+`DASHBOARD_PDF_BROWSER=chrome` or `DASHBOARD_PDF_BROWSER=msedge` set in the
+environment. Optionally set `DASHBOARD_PDF_ARTIFACT_DIR` to retain the synthetic
+HTML and PDF samples for visual inspection. Without the browser variable, the
+normal test suite skips these four browser checks.
+
 ## Presentation terminology and compatibility
 
 A case is one workflow evaluation package; Package ID is its Softdocs identifier.
