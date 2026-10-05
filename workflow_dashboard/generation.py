@@ -24,6 +24,7 @@ from .normalization import (
     select_workflow_population,
 )
 from .time_utils import dashboard_timestamp
+from .diagnostics import capture, operation, emit
 
 
 def _csv_ready(df: pd.DataFrame) -> pd.DataFrame:
@@ -67,11 +68,15 @@ def _cleanup_run_files(paths: Iterable[Path]) -> list[OSError]:
     """Best-effort cleanup for files created by the current run only."""
 
     errors: list[OSError] = []
+    emit('export.rollback.start')
     for path in paths:
         try:
             path.unlink(missing_ok=True)
         except OSError as exc:
+            emit('export.rollback.failed', error=exc)
             errors.append(exc)
+    if not errors:
+        emit('export.rollback.done')
     return errors
 
 
@@ -108,40 +113,42 @@ def _validate_staged_artifacts(paths: Iterable[Path]) -> None:
             )
 
 
-def generate_dashboard(config: DashboardConfig, records, fetch_meta, *, source="api", generated_at=None):
+def generate_dashboard(config: DashboardConfig, records, fetch_meta, *, source="api", generated_at=None, diagnostics=None):
+    with capture(diagnostics), operation('generation.complete'):
+        return _generate_dashboard(config, records, fetch_meta, source=source, generated_at=generated_at)
+
+
+def _generate_dashboard(config, records, fetch_meta, *, source, generated_at):
     """Generate files only from an already-completed fetch, with no authentication."""
     if config.api_token is not None or any(k.casefold() in ("authorization", "cookie") for k in config.headers):
         raise ValueError("Dashboard generation requires credential-free configuration")
     generated_at = generated_at if generated_at is not None else pd.Timestamp.now(tz="UTC")
-    normalized_records = normalize_records(records, config, generated_at=generated_at)
-    df = select_workflow_population(normalized_records, config)
+    with operation('generation.normalize'):
+        normalized_records = normalize_records(records, config, generated_at=generated_at)
+    with operation('generation.workflow'):
+        df = select_workflow_population(normalized_records, config)
 
     metric_definition = build_metric_definition(
         config,
         df,
         source=source,
     )
-    analytics = build_analytics(
-        df, config=config, generated_at=generated_at
-    )
-    prepared_snapshot = prepare_snapshot(
-        analytics,
-        metric_definition,
-        source=source,
-        pagination_validated=bool(fetch_meta["pagination_validated"]),
-    )
+    with operation('generation.analytics'):
+        analytics = build_analytics(df, config=config, generated_at=generated_at)
+    with operation('history.prepare'):
+        prepared_snapshot = prepare_snapshot(analytics, metric_definition, source=source,
+            pagination_validated=bool(fetch_meta["pagination_validated"]))
 
     csv_path, html_path, xlsx_path = _run_output_paths(
         config.output_dir, generated_at, config.dashboard_title
     )
     output_parent = html_path.parent
-    output_parent.mkdir(parents=True, exist_ok=True)
+    with operation('folder.access'):
+        output_parent.mkdir(parents=True, exist_ok=True)
 
-    history, owner_history, monthly_completion_history = load_history(
-        config.history_db_path,
-        source=source,
-        definition_hash=metric_definition.definition_hash,
-    )
+    with operation('history.load'):
+        history, owner_history, monthly_completion_history = load_history(
+            config.history_db_path, source=source, definition_hash=metric_definition.definition_hash)
     (
         current_history,
         current_owner_history,
@@ -170,32 +177,22 @@ def generate_dashboard(config: DashboardConfig, records, fetch_meta, *, source="
             staged_html = staging_root / html_path.name
             staged_xlsx = staging_root / xlsx_path.name
 
-            _csv_ready(df).to_csv(staged_csv, index=False)
-            render_dashboard(
-                df=df,
-                analytics=analytics,
-                history=history,
-                owner_history=owner_history,
-                output_path=staged_html,
-            )
-            export_workbook(
-                df=df,
-                analytics=analytics,
-                history=history,
-                owner_history=owner_history,
-                monthly_completion_history=monthly_completion_history,
-                output_path=staged_xlsx,
-            )
-            _validate_staged_artifacts((staged_csv, staged_html, staged_xlsx))
-            published = _publish_artifacts(
-                [
-                    (staged_csv, csv_path),
-                    (staged_html, html_path),
-                    (staged_xlsx, xlsx_path),
-                ]
-            )
+            with operation('export.csv'):
+                _csv_ready(df).to_csv(staged_csv, index=False)
+            with operation('export.html'):
+                render_dashboard(df=df, analytics=analytics, history=history,
+                    owner_history=owner_history, output_path=staged_html)
+            with operation('export.xlsx'):
+                export_workbook(df=df, analytics=analytics, history=history,
+                    owner_history=owner_history, monthly_completion_history=monthly_completion_history,
+                    output_path=staged_xlsx)
+            with operation('export.validate'):
+                _validate_staged_artifacts((staged_csv, staged_html, staged_xlsx))
+            with operation('export.publish'):
+                published = _publish_artifacts([(staged_csv, csv_path), (staged_html, html_path), (staged_xlsx, xlsx_path)])
 
-        store_prepared_snapshot(config.history_db_path, prepared_snapshot)
+        with operation('history.save'):
+            store_prepared_snapshot(config.history_db_path, prepared_snapshot)
     except Exception as exc:
         for cleanup_error in _cleanup_run_files(reversed(published)):
             exc.add_note(f"Could not remove published artifact: {cleanup_error}")

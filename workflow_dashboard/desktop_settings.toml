@@ -2,6 +2,12 @@
 api_url = "https://tenant.example.test/flow/api/user-dashboard/packages"
 dashboard_title = "Transfer Credit Evaluation Executive Dashboard"
 workflow_filter = "Example  Transcript Evaluation Form"
+# Replace these synthetic names with submitter names from your API before building.
+team_members = ["Staff Member A", "Staff Member B", "Staff Member C", "Staff Member D", "Staff Member E"]
+# Optional absolute path for history and preferences. Leave unset for portable
+# builds: Windows uses %LOCALAPPDATA%\WorkflowTransferDashboard for each user.
+# Report export folders are selected separately in the desktop app.
+# data_directory = 'C:\WorkflowTransferDashboard'
 api_take = 100
 status_filters = ["NeedsReview", "InProgress", "Completed"]
 minimum_wait_completeness = 0.95

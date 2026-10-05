@@ -63,6 +63,14 @@ class Widget:
         self.content = value
     def get(self, *args):
         return self.content
+    def current(self, index=None):
+        if index is not None:
+            self.selected_index = index
+        return getattr(self, 'selected_index', 0)
+    def set(self, *args):
+        pass
+    def yview(self, *args):
+        pass
     def invoke(self):
         assert self.visible and self.options.get("state") != "disabled"
         self.options["command"]()
@@ -97,6 +105,8 @@ class Root:
         self.clipboard = ""
     def clipboard_append(self, value):
         self.clipboard += value
+    def mainloop(self):
+        self.looped = True
 
 
 @pytest.fixture
@@ -111,7 +121,8 @@ def harness(monkeypatch, tmp_path):
         return widget
     fake_tk = SimpleNamespace(
         Tk=Root, StringVar=Variable, Text=make, TclError=RuntimeError,
-        ttk=SimpleNamespace(Frame=make, Label=make, Progressbar=make, Button=make),
+        Toplevel=lambda parent: Root(),
+        ttk=SimpleNamespace(Frame=make, Label=make, Progressbar=make, Button=make, Combobox=make, Scrollbar=make),
         filedialog=SimpleNamespace(askdirectory=choose),
         messagebox=SimpleNamespace(showerror=lambda *args, **kwargs: pytest.fail("invalid settings")),
     )
@@ -174,7 +185,8 @@ def test_no_picker_and_dialog_cancellation_restores_previous_screen(harness):
     assert harness.dialogs[0]["mustexist"] is True
 
 
-def test_success_saves_folder_and_opens_exact_last_result_off_ui_thread(monkeypatch, harness):
+@pytest.mark.parametrize("platform_name", ["nt", "posix"])
+def test_success_saves_folder_and_opens_exact_last_result_off_ui_thread(monkeypatch, harness, platform_name):
     app = harness.app
     harness.selections.append(str(harness.chosen))
     app.generate_button.invoke()
@@ -194,11 +206,21 @@ def test_success_saves_folder_and_opens_exact_last_result_off_ui_thread(monkeypa
     harness.launches.pop(0).run()
     assert opened == [Path(harness.result["outputs"]["html"]).as_uri()]
     folders = []
+    # Replace the module reference, not the shared os.name: pathlib must keep
+    # using the host platform while both folder-launch branches are exercised.
+    monkeypatch.setattr(desktop, "os", SimpleNamespace(
+        name=platform_name, startfile=lambda path: folders.append([path]),
+    ))
     monkeypatch.setattr(desktop.subprocess, "run", lambda args, **kwargs: folders.append(args) or SimpleNamespace(returncode=0))
     app.folder_button.invoke()
     assert folders == []
     harness.launches.pop(0).run()
+    assert len(folders) == 1
     assert folders[0][-1] == str(Path(harness.result["outputs"]["html"]).parent)
+    if platform_name == "nt":
+        assert len(folders[0]) == 1
+    else:
+        assert folders[0][0] == ("open" if sys.platform == "darwin" else "xdg-open")
     app.close()
     assert harness.root.destroyed
 
@@ -520,16 +542,19 @@ def test_preflight_and_fetch_run_off_tk_thread(monkeypatch, harness):
         thread.join(timeout=5)
 
 
-def test_live_workflow_spacing_matches_default_and_missing_filter_is_rejected(monkeypatch, tmp_path):
+def test_workflow_spacing_is_preserved_and_missing_filter_is_rejected(monkeypatch, tmp_path):
     monkeypatch.setattr(desktop, "application_directory", lambda: tmp_path)
+    # Test exact matching with synthetic settings, independently of the user's
+    # customized bundled preset used to build their executable.
+    settings = tmp_path / "settings.toml"
+    settings.write_text(f'workflow_filter = "{WORKFLOW}"\n', encoding="utf-8")
     config = desktop.desktop_config()
     records = [{"packageID": "one", "workflowName": WORKFLOW}]
     normalized = normalize_records(records, config)
     assert len(select_workflow_population(normalized, config)) == 1
     with pytest.raises(WorkflowPopulationError):
         select_workflow_population(normalized, replace(config, workflow_filter="Example Transcript Evaluation Form"))
-    settings = tmp_path / "settings.toml"
-    settings.write_text('dashboard_title = "Title"\n')
+    settings.write_text('dashboard_title = "Title"\n', encoding="utf-8")
     with pytest.raises(ValueError, match="one workflow"):
         desktop.desktop_config(settings)
 

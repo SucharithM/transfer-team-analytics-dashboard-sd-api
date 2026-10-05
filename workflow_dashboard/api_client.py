@@ -11,6 +11,7 @@ import requests
 
 from .config import DashboardConfig, is_secure_api_url
 from .normalization import FIELD_ALIASES
+from .diagnostics import emit, operation
 
 
 RECORD_LIST_KEYS = ("Item2", "items", "records", "results", "data", "packages", "value")
@@ -166,6 +167,7 @@ class WorkflowApiClient:
         self._bearer_token = bearer_token or config.api_token
         self._before_request = before_request
 
+    @operation('api.request')
     def fetch_page(self, *, offset: int = 0, take: int | None = None) -> PagePayload:
         if not is_secure_api_url(self.config.api_url):
             raise ApiConfigurationError("Configure an HTTPS API endpoint without credentials, query parameters, or fragments.")
@@ -188,6 +190,8 @@ class WorkflowApiClient:
             allow_redirects=False,
         )
         try:
+            if type(response.status_code) is int and 100 <= response.status_code <= 599:
+                emit('api.response', http_status=response.status_code)
             if 300 <= response.status_code < 400:
                 raise ApiConfigurationError("API redirected instead of returning records; sign in again.")
             response.raise_for_status()
@@ -336,6 +340,7 @@ class WorkflowApiClient:
             "pagination_validated": total is not None,
         }
 
+    @operation('api.fetch')
     def fetch_all_records(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Fetch all records, retrying one failed integrity check from offset zero."""
 
@@ -344,6 +349,7 @@ class WorkflowApiClient:
             try:
                 return self._fetch_all_records_once(attempt=attempt)
             except PaginationIntegrityError as exc:
+                emit('api.validate.failed')
                 last_error = exc
 
         assert last_error is not None

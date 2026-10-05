@@ -4,10 +4,13 @@ import os
 import sys
 import threading
 import time
+import tomllib
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import requests
+from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 
 from workflow_dashboard import browser_auth as auth
 from workflow_dashboard import desktop
@@ -74,26 +77,49 @@ def test_nonsecret_configuration_never_imports_credentials_into_environment(monk
     assert 'WORKFLOW_API_TOKEN' not in os.environ
 
 
-def install_fake_browser(monkeypatch, *, capture=True, closed=False):
+def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), navigation_error=None, cleanup_error=None):
     lifecycle = []
     callback = None
     page = SimpleNamespace()
     context = SimpleNamespace(pages=[page])
+    pending_events = list(events)
     def on(event, handler):
         nonlocal callback
         assert event == 'request'
         callback = handler
     def goto(url, **kwargs):
         assert url == "https://tenant.example.test"
+        assert kwargs['wait_until'] == 'commit'
+        if navigation_error is not None:
+            raise navigation_error
         if capture:
             callback(request(header=f'Bearer {TOKEN}'))
         elif closed:
             context.pages.clear()
     context.on = on
     context.new_page = lambda: page
-    context.close = lambda: lifecycle.append('context_closed')
+    def close_context():
+        lifecycle.append('context_closed')
+        if cleanup_error is not None:
+            raise cleanup_error
+    context.close = close_context
+    class Event:
+        def __init__(self, predicate):
+            self.predicate = predicate
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            if pending_events:
+                event = pending_events.pop(0)(context, callback)
+                if self.predicate(event):
+                    return
+            raise PlaywrightTimeoutError('synthetic event timeout')
+    def expect_event(name, *, predicate, timeout):
+        assert name == 'request' and timeout == 100
+        return Event(predicate)
+    context.expect_event = expect_event
     page.goto = goto
-    page.wait_for_timeout = lambda milliseconds: None
+    page.wait_for_timeout = lambda milliseconds: pytest.fail('Sign-in wait must not depend on a particular page')
     browser = SimpleNamespace(new_context=lambda **kwargs: context,
                               close=lambda: lifecycle.append('browser_closed'), is_connected=lambda: True)
     class Manager:
@@ -101,7 +127,9 @@ def install_fake_browser(monkeypatch, *, capture=True, closed=False):
             return SimpleNamespace(chromium=SimpleNamespace(launch=lambda **kwargs: browser))
         def __exit__(self, *args):
             lifecycle.append('driver_stopped')
-    monkeypatch.setitem(sys.modules, 'playwright.sync_api', SimpleNamespace(sync_playwright=Manager))
+    monkeypatch.setitem(sys.modules, 'playwright.sync_api', SimpleNamespace(
+        sync_playwright=Manager, Error=PlaywrightError, TimeoutError=PlaywrightTimeoutError,
+    ))
     return lifecycle
 
 
@@ -128,6 +156,76 @@ def test_browser_closes_before_fetch_and_credentials_never_leave_worker(monkeypa
     assert result['records'] == [{'packageID': 'case-one'}]
     assert TOKEN not in json.dumps([messages, result])
     assert lifecycle[-1] == 'response_closed'
+
+
+def test_mfa_tab_replacement_retains_exact_endpoint_capture_and_closes_before_fetch(monkeypatch):
+    def unrelated_request(context, observe):
+        event = request('https://login.microsoftonline.com/oauth/token', header=f'Bearer {TOKEN}')
+        observe(event)
+        return event
+
+    def replace_login_tab(context, observe):
+        context.pages = [SimpleNamespace()]  # No original login page survives.
+        event = request(DEFAULT_API_URL + '?offset=0', header=f'Bearer {TOKEN}')
+        observe(event)
+        return event
+
+    lifecycle = install_fake_browser(monkeypatch, capture=False,
+                                     events=[unrelated_request, replace_login_tab])
+    def fetch(self):
+        assert lifecycle == ['context_closed', 'browser_closed', 'driver_stopped']
+        return [{'packageID': 'demo-after-mfa'}], {'pagination_validated': True}
+
+    monkeypatch.setattr(WorkflowApiClient, 'fetch_all_records', fetch)
+    progress = []
+    result = auth._fetch_with_browser(DashboardConfig(), progress.append, threading.Event(),
+                                     channel='msedge', inspect_only=False, sign_in_timeout=600)
+    assert result['records'] == [{'packageID': 'demo-after-mfa'}]
+    assert progress == [('progress', 'signin'), ('progress', 'fetching')]
+    assert TOKEN not in json.dumps([result, progress])
+
+
+@pytest.mark.parametrize('stage, expected', [
+    ('navigation', 'navigation'), ('wait', 'signin'), ('closed', 'closed'),
+    ('cleanup', 'browser_cleanup'),
+])
+def test_browser_stage_errors_are_fixed_and_never_forward_raw_exceptions(monkeypatch, capsys, stage, expected):
+    def fail_wait(context, observe):
+        if stage == 'closed':
+            context.pages.clear()
+        raise PlaywrightError(TOKEN)
+
+    lifecycle = install_fake_browser(
+        monkeypatch, capture=stage == 'cleanup',
+        events=[fail_wait] if stage in ('wait', 'closed') else [],
+        navigation_error=PlaywrightError(TOKEN) if stage == 'navigation' else None,
+        cleanup_error=PlaywrightError(TOKEN) if stage == 'cleanup' else None,
+    )
+    monkeypatch.setattr(auth.os, 'setsid', lambda: None, raising=False)
+    monkeypatch.setattr(WorkflowApiClient, 'fetch_all_records', lambda self: pytest.fail('Fetching must not start'))
+    pipe = Pipe()
+    ready = threading.Event(); ready.set()
+    auth._worker(DashboardConfig(), pipe, threading.Event(), ready, 'msedge', False, 600)
+    assert pipe.messages == [('progress', 'signin'), ('error', expected)]
+    assert lifecycle == ['context_closed', 'browser_closed', 'driver_stopped']
+    assert pipe.closed
+    assert TOKEN not in repr(pipe.messages)
+    assert TOKEN not in str(auth.BrowserAuthError(expected))
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ''
+
+
+def test_cancellation_during_mfa_event_wait_remains_responsive(monkeypatch):
+    cancelled = threading.Event()
+    def cancel_wait(context, observe):
+        cancelled.set()
+
+    lifecycle = install_fake_browser(monkeypatch, capture=False, events=[cancel_wait])
+    with pytest.raises(auth.BrowserAuthError) as error:
+        auth._fetch_with_browser(DashboardConfig(), lambda message: None, cancelled,
+                                channel='msedge', inspect_only=False, sign_in_timeout=600)
+    assert error.value.code == 'cancelled'
+    assert lifecycle == ['context_closed', 'browser_closed', 'driver_stopped']
 
 
 def test_api_echo_of_token_is_rejected(monkeypatch):
@@ -193,8 +291,8 @@ def success_worker(config, pipe, cancel, ready, channel, inspect_only, timeout):
     ready.wait(10)
     pipe.send(('result', {'pid': os.getpid(), 'credential_free': config.api_token is None,
                           'headers': config.headers}))
-    time.sleep(0.25)  # Returning a result alone must not unblock rendering.
     pipe.close()
+    time.sleep(0.25)  # Closing the pipe alone must not unblock rendering.
 
 
 def waiting_worker(config, pipe, cancel, ready, channel, inspect_only, timeout):
@@ -270,10 +368,13 @@ def test_desktop_paths_are_local_and_default_preset_is_nonsecret(monkeypatch, tm
     monkeypatch.setattr(desktop, 'application_directory', lambda: tmp_path)
     monkeypatch.setenv('WORKFLOW_API_TOKEN', TOKEN)
     config = desktop.desktop_config()
+    # The bundled nonsecret preset may be customized before a Windows build.
+    preset = tomllib.loads(Path(desktop.__file__).with_name('desktop_settings.toml').read_text(encoding='utf-8'))
+    root = Path(preset.get('data_directory', tmp_path))
     assert config.api_token is None
-    assert config.output_dir == tmp_path / 'outputs'
-    assert config.history_db_path == tmp_path / 'history' / 'workflow_history.sqlite'
-    assert config.workflow_filter == 'Example  Transcript Evaluation Form'
+    assert config.output_dir == root / 'outputs'
+    assert config.history_db_path == root / 'history' / 'workflow_history.sqlite'
+    assert config.workflow_filter == preset['workflow_filter']
 
 
 def result_then_crash_worker(config, pipe, cancel, ready, channel, inspect_only, timeout):
@@ -282,6 +383,7 @@ def result_then_crash_worker(config, pipe, cancel, ready, channel, inspect_only,
     ready.wait(10)
     pipe.send(('result', {'records': [], 'fetch': {}}))
     pipe.close()
+    time.sleep(0.25)  # The pipe can close before the process exit is observable.
     raise SystemExit(4)
 
 
@@ -290,6 +392,80 @@ def test_result_from_worker_with_failed_exit_is_rejected(monkeypatch):
     with pytest.raises(auth.BrowserAuthError) as error:
         auth.browser_fetch(DashboardConfig())
     assert error.value.code == 'worker'
+    assert not multiprocessing.active_children()
+
+
+@pytest.mark.parametrize('target, expected', [
+    (success_worker, None), (result_then_crash_worker, 'worker'),
+])
+def test_terminal_result_does_not_poll_closed_windows_pipe(monkeypatch, target, expected):
+    real_context = multiprocessing.get_context('spawn')
+
+    class Receive:
+        terminal_received = False
+
+        def poll(self, timeout=0):
+            if self.terminal_received:
+                # Windows PeekNamedPipe raises after the worker closes its end.
+                raise BrokenPipeError('synthetic closed Windows pipe')
+            return receive.poll(timeout)
+
+        def recv(self):
+            value = receive.recv()
+            self.terminal_received = value[0] in ('result', 'error')
+            return value
+
+        def close(self):
+            receive.close()
+
+    receive, send = real_context.Pipe(duplex=False)
+    context = SimpleNamespace(Event=real_context.Event, Process=real_context.Process,
+                              Pipe=lambda **kwargs: (Receive(), send))
+    monkeypatch.setattr(auth, 'mp', SimpleNamespace(get_context=lambda method: context))
+    monkeypatch.setattr(auth, '_worker', target)
+    start = time.monotonic()
+    if expected is None:
+        result = auth.browser_fetch(DashboardConfig())
+        assert time.monotonic() - start >= 0.25
+        assert not any(child.pid == result['pid'] for child in multiprocessing.active_children())
+    else:
+        with pytest.raises(auth.BrowserAuthError) as error:
+            auth.browser_fetch(DashboardConfig())
+        assert error.value.code == expected
+    assert not multiprocessing.active_children()
+
+
+@pytest.mark.parametrize('operation', ['poll', 'recv'])
+def test_pipe_failure_before_result_is_worker_failure(monkeypatch, operation):
+    real_context = multiprocessing.get_context('spawn')
+    receive, send = real_context.Pipe(duplex=False)
+
+    def fail(*args):
+        raise BrokenPipeError('synthetic-private-pipe-error')
+
+    wrapped = SimpleNamespace(poll=fail if operation == 'poll' else lambda *args: True,
+                              recv=fail, close=receive.close)
+    context = SimpleNamespace(Event=real_context.Event, Process=real_context.Process,
+                              Pipe=lambda **kwargs: (wrapped, send))
+    monkeypatch.setattr(auth, 'mp', SimpleNamespace(get_context=lambda method: context))
+    monkeypatch.setattr(auth, '_worker', waiting_worker)
+    with pytest.raises(auth.BrowserAuthError) as error:
+        auth.browser_fetch(DashboardConfig())
+    assert error.value.code == 'worker'
+    assert 'synthetic-private' not in str(error.value)
+    assert not multiprocessing.active_children()
+
+
+def test_supervision_failure_remains_policy_failure_and_reaps_worker(monkeypatch):
+    def deny(pid):
+        raise OSError('synthetic-private-policy-error')
+
+    monkeypatch.setattr(auth, 'ProcessGuard', lambda: SimpleNamespace(attach=deny, close=lambda: None))
+    monkeypatch.setattr(auth, '_worker', waiting_worker)
+    with pytest.raises(auth.BrowserAuthError) as error:
+        auth.browser_fetch(DashboardConfig())
+    assert error.value.code == 'policy'
+    assert 'synthetic-private' not in str(error.value)
     assert not multiprocessing.active_children()
 
 
