@@ -137,7 +137,7 @@ def test_age_by_step_keeps_undercovered_group_without_showing_sample_sizes() -> 
     assert list(trace.labels) == ["Faculty Review", "Review"]
     assert list(trace.values) == [1.0, 0.0]
     assert trace.texttemplate == "%{value:.1f}d"
-    assert "Median Open Age: %{value:.1f}d" in trace.hovertemplate
+    assert "Median Case-Open Age: %{value:.1f}d" in trace.hovertemplate
     assert "percent" not in trace.texttemplate
     assert "Share" not in trace.hovertemplate
     assert "valid" not in trace.hovertemplate

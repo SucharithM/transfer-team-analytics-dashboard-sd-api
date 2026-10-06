@@ -178,7 +178,7 @@ def test_coverage_appears_in_dashboard_and_workbook(tmp_path) -> None:
         workbook["Summary"].cell(row=row, column=2).value
         for row in range(4, 10)
     }
-    assert summary_values["Typical Time Since Last Activity"] == "—"
+    assert summary_values["Typical Idle Time"] == "—"
     exception_values = [
         cell.value for row in workbook["Exceptions"].iter_rows() for cell in row
     ]

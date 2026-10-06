@@ -115,6 +115,10 @@ class PageContent:
     save_pdf_hint: str
     preparing_pdf: str
     pdf_error: str
+    save_pdf: str
+    save_pdf_hint: str
+    preparing_pdf: str
+    pdf_error: str
 
 
 @dataclass(frozen=True)
@@ -207,17 +211,20 @@ PAGE = PageContent(
     authorship_prefix="Developed by",
     author_name="Sucharith Madhusoodana",
     intro_paragraphs=(
-        "Track open evaluations, completed cases, and work that may need attention. "
-        "Each case is one evaluation in Softdocs, identified by its Package ID. "
-        "A student may have multiple cases across No-Rule, International, Military, and Continuing Student evaluations.",
-        "Case age is measured from submission and includes both activity and waiting. Staff views show who submitted each case. "
-        "Completion dates are estimated from the last recorded update.",
+        "This custom dashboard leverages Softdocs Etrieve Central Submissions data to monitor the end-to-end "
+        "Transfer Credit Evaluation process. A student may have one or more evaluation cases, including No-Rule, "
+        "International, Military, and Continuing Student evaluation types. The dashboard provides interactive charts, "
+        "visualizations, and key operational metrics for workflow status, submission and evaluation volumes, "
+        "processing times, aging, pending evaluations, completed requests, and workload distribution. "
+        "These analytics enable the Registrar’s Office to monitor operational performance across the different evaluation types, "
+        "identify workflow bottlenecks, balance evaluator workloads, ensure timely processing, and "
+        "support data-driven decisions for resource planning and continuous process improvement.",
     ),
     jump_to_top="Jump to top",
-    save_pdf="Save as PDF",
-    save_pdf_hint="Choose Save as PDF in the print dialog.",
-    preparing_pdf="Preparing charts for PDF...",
-    pdf_error="Could not prepare the PDF. Please try again.",
+    save_pdf="Print / PDF",
+    save_pdf_hint="Opens the print dialog. Choose Save as PDF.",
+    preparing_pdf="Preparing…",
+    pdf_error="Couldn’t prepare the report. Please try again.",
 )
 
 COMMON = CommonContent(
@@ -235,7 +242,7 @@ COMMON = CommonContent(
 )
 
 CHART_LABELS = ChartLabels(
-    age_unavailable="Case age unavailable",
+    age_unavailable="Age unavailable",
     age_since_step_submission="Case Age (Days)",
     action_group="Action group",
     aging_band="Aging band",
@@ -249,7 +256,7 @@ CHART_LABELS = ChartLabels(
     daily_closures="Daily Completed Cases",
     date="Date",
     days="Days",
-    median_age="Median Open Age",
+    median_age="Median Case-Open Age",
     median_completion="Median Completion Time",
     idle_time="Days Since Last Activity",
     last_activity="Last activity",
@@ -297,7 +304,7 @@ KPI_CONTENT: Mapping[KpiKey, KpiContent] = MappingProxyType(
             ),
         ),
         "typical_wait_time": KpiContent(
-            label="Median Open Age",
+            label="Median Case-Open Age",
             help_template=(
                 "How long cases have been open since submission, including time without "
                 "activity. Median means the middle value. Based on {valid_count} of {total_count} "
@@ -305,7 +312,7 @@ KPI_CONTENT: Mapping[KpiKey, KpiContent] = MappingProxyType(
             ),
         ),
         "typical_idle_time": KpiContent(
-            label="Typical Time Since Last Activity",
+            label="Typical Idle Time",
             help_template=(
                 "How long open cases have gone without an update. Typical means the middle value. "
                 "Based on {valid_count} of {total_count} cases; shown when at least "
@@ -325,7 +332,7 @@ KPI_CONTENT: Mapping[KpiKey, KpiContent] = MappingProxyType(
 CHART_CONTENT: Mapping[ChartKey, ChartContent] = MappingProxyType(
     {
         "in_the_works_by_step": ChartContent(
-            title="Open Cases by Workflow Step",
+            title="Current Open Cases",
             help_text=(
                 "Where open cases are in the evaluation process. Larger slices mean more cases at "
                 "that step."
@@ -347,15 +354,18 @@ CHART_CONTENT: Mapping[ChartKey, ChartContent] = MappingProxyType(
             ),
         ),
         "workflow_aging_matrix": ChartContent(
-            title="Open Cases by Workflow Step and Case Age",
+            title="Progress and Aging of Open Cases",
             help_text=(
-                "Find steps where cases are accumulating and see how long the cases have been open since submission. "
-                "Backlog means open for more than {backlog_age_days:g} days since submission. Cases without "
-                "usable dates are included in step totals but cannot be placed in a time band."
+                "Counts open cases by workflow step and submission age. Cell labels and row totals "
+                "show volume; colors progress from lower-risk recently opened cases to higher-risk "
+                "aged / older cases, with color intensity scaled consistently across the matrix. "
+                "Cases with missing or negative ages are excluded from the bands and reported as "
+                "Age unavailable in hover details. Backlog means open for more than "
+                "{backlog_age_days:g} days since submission."
             ),
         ),
         "age_idle_action_matrix": ChartContent(
-            title="Open Cases: Time and Activity - Risk Overview",
+            title="Open Cases Risk and Action Overview",
             help_text=(
                 "See which cases have been open longer since submission and which have had no "
                 "recent activity. Backlog means open for over {backlog_age_days:g} days since submission; idle "
@@ -542,7 +552,7 @@ EVALUATION_TYPE_TABLE = EvaluationTypeTableContent(
             "completed_count": "Completed",
             "completion_rate": "% Completed",
             "backlog_summary": "Backlog",
-            "median_open_age_summary": "Median Open Age",
+            "median_open_age_summary": "Median Case-Open Age",
             "median_completion_summary": "Median Completion Time",
         }
     ),

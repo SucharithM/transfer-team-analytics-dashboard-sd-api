@@ -80,7 +80,7 @@ def test_content_catalog_covers_all_dashboard_components() -> None:
 
 
 def test_current_open_chart_titles_and_age_help_match_dashboard_presentation() -> None:
-    assert CHART_CONTENT["in_the_works_by_step"].title == "Open Cases by Workflow Step"
+    assert CHART_CONTENT["in_the_works_by_step"].title == "Current Open Cases"
     assert CHART_CONTENT["status_mix"].title == "Cases by Status"
     assert "reached End appear as Completed" in CHART_CONTENT["status_mix"].help_text
     assert SECTION_CONTENT["evaluation_types"].eyebrow == "Case Overview"
@@ -105,11 +105,11 @@ def test_current_open_chart_titles_and_age_help_match_dashboard_presentation() -
     assert "valid/total" not in CHART_CONTENT["aging_by_step"].help_text
     assert "completeness" not in CHART_CONTENT["aging_by_step"].help_text
     assert (
-        "Cases without usable dates" in CHART_CONTENT["workflow_aging_matrix"].help_text
+        "Cases with missing or negative ages" in CHART_CONTENT["workflow_aging_matrix"].help_text
     )
     assert (
         CHART_CONTENT["age_idle_action_matrix"].title
-        == "Open Cases: Time and Activity - Risk Overview"
+        == "Open Cases Risk and Action Overview"
     )
     assert "since submission" in (CHART_CONTENT["age_idle_action_matrix"].help_text)
     assert "Select a group or dot" in (
