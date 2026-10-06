@@ -216,6 +216,21 @@ def emit(code, *, error=None, **details):
         emitter.record(code, error=error, **details)
 
 
+def bind_emitter():
+    """Keep this capture's validated emitter across Playwright event greenlets.
+
+    Bind inside capture, before registering callbacks. Reuse the same emitter
+    so callback events share its budget, source and clock with ordinary events.
+    """
+    emitter = _current.get()
+
+    def record(code, *, error=None, **details):
+        if emitter is not None:
+            emitter.record(code, error=error, **details)
+
+    return record
+
+
 def accept_worker_event(event):
     safe = validate_event(event)
     if safe is None or safe['source'] != 'worker':
