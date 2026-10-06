@@ -4,18 +4,50 @@ from . import dashboard_content as content
 
 
 PRINT_STYLES = """
-    .pdf-export { display: grid; gap: 5px; justify-items: end; }
+    .pdf-export { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+    .pdf-export-control { position: relative; flex: 0 0 auto; }
     .pdf-export button {
-      background: var(--primary); border: 1px solid var(--primary-dark);
-      border-radius: 7px; color: white; cursor: pointer; font: inherit;
-      font-size: 14px; font-weight: 600; padding: 9px 16px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      width: 144px; min-height: 40px; padding: 8px 12px;
+      background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: 8px; color: var(--text); cursor: pointer; font: inherit;
+      font-size: 13px; font-weight: 600; line-height: 1.3;
     }
-    .pdf-export button:hover:not(:disabled) { background: var(--primary-dark); }
+    .pdf-export button:hover:not(:disabled) { background: var(--surface-muted); }
     .pdf-export button:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
-    .pdf-export button:disabled { cursor: wait; opacity: 0.65; }
-    .pdf-export p { font-size: 12px; margin: 0; }
+    .pdf-export button:disabled { cursor: wait; color: var(--muted); }
+    .pdf-printer-icon { flex: 0 0 auto; }
+    .pdf-spinner {
+      display: none; width: 16px; height: 16px; flex: 0 0 auto;
+      border: 2px solid var(--border-strong); border-top-color: currentColor;
+      border-radius: 50%; animation: pdf-spin 1s linear infinite;
+    }
+    .pdf-export.is-preparing .pdf-printer-icon { display: none; }
+    .pdf-export.is-preparing .pdf-spinner { display: inline-block; }
+    @keyframes pdf-spin { to { transform: rotate(360deg); } }
+    .pdf-export-hint {
+      position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 25;
+      width: 280px; max-width: calc(100vw - 72px); padding: 10px 12px;
+      background: var(--text); color: var(--surface); border-radius: 8px;
+      font-size: 13px; line-height: 1.4; text-align: left;
+      visibility: hidden; opacity: 0;
+    }
+    .pdf-export-hint::after { content: ""; position: absolute; top: 100%; left: 0; right: 0; height: 8px; }
+    .pdf-export-control:not(.tooltip-dismissed):hover .pdf-export-hint,
+    .pdf-export-control:not(.tooltip-dismissed):focus-within .pdf-export-hint {
+      visibility: visible; opacity: 1;
+    }
+    .pdf-export.is-preparing .pdf-export-hint { visibility: hidden; opacity: 0; }
+    .dashboard-header .pdf-export-status { font-size: 13px; line-height: 1.4; margin: 0; max-width: 330px; }
+    .pdf-export-status:not(.is-error) {
+      position: absolute; width: 1px; height: 1px; overflow: hidden;
+      clip-path: inset(50%); white-space: nowrap;
+    }
+    .dashboard-header .pdf-export-status.is-error { color: #a32d38; }
     .pdf-export-status:empty { display: none; }
     .pdf-chart { display: none; }
+    @media (pointer: coarse) { .pdf-export button { min-height: 44px; } }
+    @media (prefers-reduced-motion: reduce) { .pdf-spinner { animation: none; } }
     @page { size: letter landscape; margin: 10mm; }
     @media print {
       html, body { background: white; overflow: visible; }
@@ -26,7 +58,6 @@ PRINT_STYLES = """
       }
       .dashboard-header { padding: 5mm; }
       .header-top { flex-direction: row; }
-      .header-meta { align-items: flex-end; text-align: right; }
       h1 { font-size: 24px; }
       .dashboard-section { margin-top: 6mm; }
       .dashboard-section:not(.workflow-legend) { break-before: page; }
@@ -91,6 +122,7 @@ PRINT_STYLES = """
 def export_script(json_for_script) -> str:
     """Keep status copy escaped exactly like other inline dashboard scripts."""
     messages = json_for_script({
+        "ready": content.PAGE.save_pdf,
         "preparing": content.PAGE.preparing_pdf,
         "error": content.PAGE.pdf_error,
     })
@@ -99,9 +131,39 @@ def export_script(json_for_script) -> str:
       (() => {
         const button = document.getElementById("save-pdf");
         const status = document.getElementById("pdf-export-status");
+        const label = button.querySelector(".pdf-button-label");
+        const exportControl = button.closest(".pdf-export");
+        const tooltipControl = button.closest(".pdf-export-control");
+        const hint = document.getElementById("pdf-export-hint");
         const messages = MESSAGES;
         let busy = false;
         let snapshots = [];
+
+        const positionHint = () => {
+          hint.style.left = "";
+          hint.style.right = "";
+          if (hint.getBoundingClientRect().left < 12) {
+            hint.style.left = "0";
+            hint.style.right = "auto";
+          }
+        };
+        tooltipControl.addEventListener("mouseenter", positionHint);
+        tooltipControl.addEventListener("focusin", positionHint);
+        window.addEventListener("resize", positionHint);
+
+        tooltipControl.addEventListener("keydown", event => {
+          if (event.key === "Escape") tooltipControl.classList.add("tooltip-dismissed");
+        });
+        tooltipControl.addEventListener("mouseleave", () => {
+          if (!tooltipControl.contains(document.activeElement)) {
+            tooltipControl.classList.remove("tooltip-dismissed");
+          }
+        });
+        tooltipControl.addEventListener("focusout", event => {
+          if (!tooltipControl.contains(event.relatedTarget) && !tooltipControl.matches(":hover")) {
+            tooltipControl.classList.remove("tooltip-dismissed");
+          }
+        });
 
         const restore = () => {
           document.body.classList.remove("pdf-prepared");
@@ -110,10 +172,16 @@ def export_script(json_for_script) -> str:
           busy = false;
           button.disabled = false;
           button.removeAttribute("aria-busy");
+          exportControl.classList.remove("is-preparing");
+          label.textContent = messages.ready;
+          status.classList.remove("is-error");
           status.textContent = "";
         };
         window.addEventListener("afterprint", () => {
-          if (document.body.classList.contains("pdf-prepared")) restore();
+          if (document.body.classList.contains("pdf-prepared")) {
+            restore();
+            button.focus({ preventScroll: true });
+          }
         });
 
         const waitForCharts = plots => new Promise((resolve, reject) => {
@@ -137,6 +205,9 @@ def export_script(json_for_script) -> str:
           busy = true;
           button.disabled = true;
           button.setAttribute("aria-busy", "true");
+          exportControl.classList.add("is-preparing");
+          label.textContent = messages.preparing;
+          status.classList.remove("is-error");
           status.textContent = messages.preparing;
           try {
             const plots = Array.from(document.querySelectorAll(".chart-container .js-plotly-plot"));
@@ -158,7 +229,9 @@ def export_script(json_for_script) -> str:
             window.print();
           } catch (error) {
             restore();
+            status.classList.add("is-error");
             status.textContent = messages.error;
+            button.focus({ preventScroll: true });
           }
         });
       })();

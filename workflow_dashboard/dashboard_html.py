@@ -1828,19 +1828,28 @@ def render_dashboard(
       padding: 24px 28px;
     }}
     .header-top {{
-      align-items: flex-start;
+      align-items: center;
       display: flex;
-      gap: 20px;
+      flex-wrap: wrap;
+      gap: 8px 20px;
       justify-content: space-between;
     }}
-    .header-meta {{
-      align-items: flex-end;
+    .header-utility-row {{
+      align-items: center;
+      border-top: 1px solid var(--border);
       display: flex;
-      flex: 0 0 auto;
-      flex-direction: column;
-      gap: 9px;
-      max-width: 420px;
-      text-align: right;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      justify-content: space-between;
+      margin-top: 18px;
+      padding-top: 12px;
+    }}
+    .dashboard-header h1 {{ margin-top: 10px; }}
+    .header-top .eyebrow {{ margin-bottom: 0; }}
+    .dashboard-header .generated-at {{
+      font-size: 13px;
+      line-height: 1.4;
+      margin: 0;
     }}
     .dashboard-header .authorship-credit {{
       color: var(--muted);
@@ -1877,19 +1886,10 @@ def render_dashboard(
     }}
     .dashboard-header p {{
       color: var(--muted);
-      margin: 12px 0 0;
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 18px 0 0;
       max-width: 980px;
-    }}
-    .date-badge {{
-      background: var(--primary-soft);
-      border: 1px solid #cbdcff;
-      border-radius: 999px;
-      color: var(--primary-dark);
-      flex: 0 0 auto;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 7px 13px;
-      white-space: nowrap;
     }}
     .dashboard-section {{ margin-top: 30px; }}
     .section-heading {{ margin-bottom: 14px; }}
@@ -2328,15 +2328,9 @@ def render_dashboard(
       .trend-grid .chart-container:last-child:nth-child(odd) {{ grid-column: auto; }}
     }}
     @media (max-width: 720px) {{
-      .header-top {{ flex-direction: column; }}
-      .header-meta {{
-        align-items: flex-start;
-        max-width: none;
-        text-align: left;
-        width: 100%;
-      }}
+      .header-top {{ align-items: flex-start; flex-direction: column; }}
+      .header-utility-row {{ align-items: flex-start; }}
       .dashboard-header {{ padding: 21px 22px; }}
-      .date-badge {{ white-space: normal; }}
       .kpi-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .legend-grid {{ grid-template-columns: 1fr; }}
       .action-matrix-controls {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
@@ -2371,17 +2365,24 @@ def render_dashboard(
   <main class="dashboard-shell" id="dashboard-top">
     <header class="dashboard-header">
       <div class="header-top">
-        <div>
-          <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
-          <h1>{html.escape(analytics.dashboard_title)} <span class="prototype-label">{html.escape(page_copy.prototype_label)}</span></h1>
-        </div>
-        <div class="header-meta">
-          <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
-          <div class="date-badge">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</div>
-          <div class="pdf-export">
-            <button type="button" id="save-pdf" aria-describedby="pdf-export-hint">{html.escape(page_copy.save_pdf)}</button>
-            <p id="pdf-export-hint">{html.escape(page_copy.save_pdf_hint)}</p>
-            <p class="pdf-export-status" id="pdf-export-status" role="status" aria-live="polite"></p>
+        <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
+        <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
+      </div>
+      <h1>{html.escape(analytics.dashboard_title)} <span class="prototype-label">{html.escape(page_copy.prototype_label)}</span></h1>
+      <div class="header-utility-row">
+        <p class="generated-at">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</p>
+        <div class="pdf-export">
+          <p class="pdf-export-status" id="pdf-export-status" role="status" aria-live="polite"></p>
+          <div class="pdf-export-control">
+            <button type="button" id="save-pdf" aria-describedby="pdf-export-hint">
+              <svg class="pdf-printer-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="7" rx="1"/><path d="M18 12h.01"/>
+              </svg>
+              <span class="pdf-spinner" aria-hidden="true"></span>
+              <span class="pdf-button-label">{html.escape(page_copy.save_pdf)}</span>
+            </button>
+            <span id="pdf-export-hint" class="pdf-export-hint" role="tooltip">{html.escape(page_copy.save_pdf_hint)}</span>
           </div>
         </div>
       </div>

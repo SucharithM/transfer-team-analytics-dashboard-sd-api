@@ -343,8 +343,12 @@ Each run writes a new timestamped set of files to a Boston-dated directory such 
 
 The date, weekday, timestamp, and timezone in these paths all use Boston local time. Previous run files are retained.
 
-To save a PDF, open the HTML report and select **Save as PDF** in its header.
+To save a PDF, open the HTML report and select **Print / PDF** beside its
+generation time. Hover over or focus the button for guidance.
 The report prepares its charts locally, then opens the browser print dialog.
+The button shows **Preparing…** while charts are prepared and returns to normal
+after saving or cancelling. If preparation fails, an inline message invites you
+to retry with the same button.
 Choose **Save as PDF** (or your system's PDF printer), a filename, and a destination.
 The print layout defaults to US Letter landscape with 10 mm margins; browser
 settings can override these defaults. Turn off browser headers and footers to
@@ -362,7 +366,7 @@ Run `python -m pytest -q tests/test_dashboard_pdf.py` with
 `DASHBOARD_PDF_BROWSER=chrome` or `DASHBOARD_PDF_BROWSER=msedge` set in the
 environment. Optionally set `DASHBOARD_PDF_ARTIFACT_DIR` to retain the synthetic
 HTML and PDF samples for visual inspection. Without the browser variable, the
-normal test suite skips these four browser checks.
+normal test suite skips the browser checks.
 
 ## Presentation terminology and compatibility
 

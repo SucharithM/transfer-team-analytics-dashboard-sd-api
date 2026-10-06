@@ -207,17 +207,20 @@ PAGE = PageContent(
     authorship_prefix="Developed by",
     author_name="Sucharith Madhusoodana",
     intro_paragraphs=(
-        "Track open evaluations, completed cases, and work that may need attention. "
-        "Each case is one evaluation in Softdocs, identified by its Package ID. "
-        "A student may have multiple cases across No-Rule, International, Military, and Continuing Student evaluations.",
-        "Case age is measured from submission and includes both activity and waiting. Staff views show who submitted each case. "
-        "Completion dates are estimated from the last recorded update.",
+        "This custom dashboard leverages Softdocs Etrieve Central Submissions data to monitor the end-to-end "
+        "Transfer Credit Evaluation process. A student may have one or more evaluation cases, including No-Rule, "
+        "International, Military, and Continuing Student evaluation types. The dashboard provides interactive charts, "
+        "visualizations, and key operational metrics for workflow status, submission and evaluation volumes, "
+        "processing times, aging, pending evaluations, completed requests, and workload distribution. "
+        "These analytics enable the Registrar’s Office to monitor operational performance across the different evaluation types, "
+        "identify workflow bottlenecks, balance evaluator workloads, ensure timely processing, and "
+        "support data-driven decisions for resource planning and continuous process improvement.",
     ),
     jump_to_top="Jump to top",
-    save_pdf="Save as PDF",
-    save_pdf_hint="Choose Save as PDF in the print dialog.",
-    preparing_pdf="Preparing charts for PDF...",
-    pdf_error="Could not prepare the PDF. Please try again.",
+    save_pdf="Print / PDF",
+    save_pdf_hint="Opens the print dialog. Choose Save as PDF.",
+    preparing_pdf="Preparing…",
+    pdf_error="Couldn’t prepare the report. Please try again.",
 )
 
 COMMON = CommonContent(
