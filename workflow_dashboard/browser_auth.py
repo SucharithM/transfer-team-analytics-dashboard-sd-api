@@ -20,7 +20,7 @@ from .api_client import (
 )
 from .config import DashboardConfig, DEFAULT_API_URL, is_secure_api_url
 from .process_guard import ProcessGuard
-from .diagnostics import capture, emit, enabled, operation, validate_event, accept_worker_event, MAX_EVENTS
+from .diagnostics import capture, emit, bind_emitter, enabled, operation, validate_event, accept_worker_event, MAX_EVENTS
 
 SIGN_IN_TIMEOUT = 600
 EMPTY_TAB_GRACE_SECONDS = 10
@@ -87,9 +87,10 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
     disconnected = False
     cleanup_started = False
     empty_since = None
+    emit_callback = bind_emitter()
 
     def lifecycle(code):
-        emit(code, closure_phase='cleanup' if cleanup_started else 'signin')
+        emit_callback(code, closure_phase='cleanup' if cleanup_started else 'signin')
 
     def on_disconnect(*_):
         nonlocal disconnected
@@ -144,7 +145,7 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
                         if token is None:
                             token = bearer_from_request(request, api_url=config.api_url)
                             if token is not None:
-                                emit('credential.observed')
+                                emit_callback('credential.observed')
 
                     context.on("request", observe)
                     context.on('close', on_context_close)

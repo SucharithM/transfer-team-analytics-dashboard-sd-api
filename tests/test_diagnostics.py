@@ -396,3 +396,59 @@ def test_page_crash_event_contains_no_page_data(monkeypatch):
     event = next(e for e in events if e['code'] == 'browser.page.crashed')
     assert event['details'] == {'closure_phase': 'signin'}
     assert_private_absent(events)
+
+
+@pytest.mark.parametrize('capture_token', [False, True])
+def test_browser_callbacks_keep_diagnostics_across_playwright_greenlets(monkeypatch, capture_token):
+    from .test_browser_auth import Clock
+    def close(context, observe):
+        context.emit('close')
+    install_fake_browser(monkeypatch, capture=capture_token, events=[close],
+                         clock=Clock(), event_greenlets=True)
+    monkeypatch.setattr(auth.os, 'setsid', lambda: None, raising=False)
+    monkeypatch.setattr(auth.WorkflowApiClient, 'fetch_all_records',
+                        lambda self: ([], {'pagination_validated': True}))
+    pipe = Pipe()
+    ready = threading.Event()
+    ready.set()
+    auth._worker(DashboardConfig(), pipe, threading.Event(), ready, 'msedge', False, 600,
+                 diagnostics_enabled=True)
+    events = [data for kind, data in pipe.messages if kind == 'diagnostic']
+    codes = [event['code'] for event in events]
+    assert 'browser.page.opened' in codes
+    assert 'browser.page.closed' in codes
+    assert 'browser.disconnected' in codes
+    assert ('credential.observed' in codes) == capture_token
+    if not capture_token:
+        closed = next(e for e in events if e['code'] == 'browser.context.closed')
+        assert closed['details'] == {'closure_phase': 'signin'}
+        assert codes.index('browser.context.closed') < codes.index('browser.observe.failed')
+        assert pipe.messages[-1] == ('error', 'closed')
+    else:
+        assert pipe.messages[-1][0] == 'result'
+    assert all(e['source'] == 'worker' and logs.validate_event(e) is not None for e in events)
+    assert_private_absent(pipe.messages)
+
+
+def test_bound_emitter_shares_budget_and_validation_across_greenlets():
+    from greenlet import greenlet
+    events = []
+    with logs.capture(events.append, bounded=True):
+        bound = logs.bind_emitter()
+        greenlet(lambda: bound('browser.context.closed', reason=TOKEN)).switch()
+        for _ in range(logs.MAX_EVENTS):
+            logs.emit('browser.observe.start')
+            greenlet(lambda: bound('browser.page.opened', closure_phase='signin')).switch()
+    assert len(events) == logs.MAX_EVENTS
+    assert events[0]['code'] == 'diagnostics.unavailable'
+    assert events[-1]['code'] == 'diagnostics.truncated'
+    assert_private_absent(events)
+
+
+def test_emitter_bound_without_capture_stays_disabled():
+    from greenlet import greenlet
+    bound = logs.bind_emitter()
+    events = []
+    with logs.capture(events.append):
+        greenlet(lambda: bound('browser.page.opened', closure_phase='signin')).switch()
+    assert events == []

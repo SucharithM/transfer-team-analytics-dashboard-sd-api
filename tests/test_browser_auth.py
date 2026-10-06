@@ -85,7 +85,8 @@ class Clock:
         return self.now
 
 
-def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), navigation_error=None, cleanup_error=None, clock=None):
+def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), navigation_error=None, cleanup_error=None, clock=None,
+                         event_greenlets=False):
     lifecycle = []
     callback = None
     if closed and clock is None:
@@ -96,7 +97,13 @@ def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), 
     def emitter(**kwargs):
         handlers = {}
         obj = SimpleNamespace(**kwargs)
-        obj.on = lambda event, handler: handlers.setdefault(event, []).append(handler)
+        def on(event, handler):
+            if event_greenlets:
+                from greenlet import greenlet
+                original = handler
+                handler = lambda *args: greenlet(original).switch(*args)
+            handlers.setdefault(event, []).append(handler)
+        obj.on = on
         obj.emit = lambda event, *args: [handler(*args) for handler in handlers.get(event, [])]
         return obj
 
@@ -108,7 +115,7 @@ def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), 
         nonlocal callback
         register(event, handler)
         if event == 'request':
-            callback = handler
+            callback = lambda request: context.emit('request', request)
     def goto(url, **kwargs):
         assert url == "https://tenant.example.test"
         assert kwargs['wait_until'] == 'commit'
