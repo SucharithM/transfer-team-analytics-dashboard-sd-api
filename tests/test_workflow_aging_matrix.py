@@ -175,7 +175,7 @@ def test_matrix_distinguishes_large_young_and_small_aged_queues() -> None:
     assert trace.type == "heatmap"
     assert trace.texttemplate == "%{text}"
     assert "Open cases: %{customdata[3]:,}" in trace.hovertemplate
-    assert "Case age unavailable: %{customdata[2]:,}" in trace.hovertemplate
+    assert "Age unavailable: %{customdata[2]:,}" in trace.hovertemplate
 
     post_index = list(trace.y).index(POST_FACULTY)
     syllabi_index = list(trace.y).index(PENDING_SYLLABI)

@@ -78,6 +78,16 @@ def _prepare(page):
     page.wait_for_function("count => window.printCalls === count", arg=before + 1)
     assert page.locator("#save-pdf").is_disabled()
     assert page.locator(".pdf-chart").count() == page.locator(".chart-container .js-plotly-plot").count()
+    for image in page.locator(".pdf-chart").all():
+        assert image.get_attribute("alt") == image.evaluate(
+            'image => image.closest(".chart-container").getAttribute("aria-label")'
+        )
+    for title in (
+        "Current Open Cases",
+        "Progress and Aging of Open Cases",
+        "Open Cases Risk and Action Overview",
+    ):
+        assert page.locator(f'.pdf-chart[alt="{title}"]').count() == 1
 
 
 @pytest.mark.parametrize("width", [1440, 1024, 720, 390])

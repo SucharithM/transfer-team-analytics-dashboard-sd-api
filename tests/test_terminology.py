@@ -39,7 +39,7 @@ def test_nondefault_threshold_copy_matches_backlog_boundary(tmp_path):
     assert 'Cases at exactly 8 days are not yet backlog' in markup
     assert 'The 20-day marker highlights longer-running cases' in markup
     assert 'idle means no update for 5 days or more' in markup
-    assert 'more than 8 days' in markup
+    assert 'Age unavailable in hover details. Backlog means open for more than 8 days since submission.' in markup
     assert '{backlog_age_days' not in markup
     assert '{old_age_days' not in markup
     assert '{stale_idle_days' not in markup
@@ -73,7 +73,9 @@ def test_summary_copy_changes_without_renaming_audit_tabs_or_columns(tmp_path):
                                   'Closed By Month', 'Exceptions', 'History Trends',
                                   'Owner History', 'Completion History']
     assert workbook['Summary']['A5'].value == 'Open Cases'
-    assert workbook['Summary']['A8'].value == 'Median Open Age'
+    assert workbook['Summary']['A8'].value == 'Median Case-Open Age'
+    assert workbook['Summary']['A9'].value == 'Typical Idle Time'
+    assert '<th scope="col">Median Case-Open Age</th>' in markup
     assert [c.value for c in next(workbook['Daily Closures'].rows)] == [
         'closed_date', 'closed_count', 'rolling_7_day_avg']
     for label in ('Submitter', 'Workflow Step', 'Case Age (Days)',
