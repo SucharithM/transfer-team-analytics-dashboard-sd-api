@@ -16,7 +16,8 @@ normal clipboard behavior.
 
 Diagnostics accept only a fixed catalog of event codes and validated technical
 fields: application/code identity, OS/runtime/browser versions, timestamps,
-stage outcomes, approved error categories, and numeric HTTP/system/process error
+stage outcomes, approved error categories, fixed browser lifecycle events,
+allowlisted closure reasons and sign-in/cleanup phases, and numeric HTTP/system/process error
 codes. They exclude credentials, cookies, headers, tenant URLs, workflow/staff
 names, records and record counts, user/host names, paths, configuration contents,
 environment dumps, screenshots, raw exceptions, and tracebacks. Unknown fields

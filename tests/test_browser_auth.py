@@ -77,16 +77,38 @@ def test_nonsecret_configuration_never_imports_credentials_into_environment(monk
     assert 'WORKFLOW_API_TOKEN' not in os.environ
 
 
-def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), navigation_error=None, cleanup_error=None):
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+
+def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), navigation_error=None, cleanup_error=None, clock=None):
     lifecycle = []
     callback = None
-    page = SimpleNamespace()
-    context = SimpleNamespace(pages=[page])
+    if closed and clock is None:
+        clock = Clock()
+    if clock is not None:
+        monkeypatch.setattr(auth, 'time', SimpleNamespace(monotonic=clock.monotonic))
+
+    def emitter(**kwargs):
+        handlers = {}
+        obj = SimpleNamespace(**kwargs)
+        obj.on = lambda event, handler: handlers.setdefault(event, []).append(handler)
+        obj.emit = lambda event, *args: [handler(*args) for handler in handlers.get(event, [])]
+        return obj
+
+    page = emitter()
+    context = emitter(pages=[page])
     pending_events = list(events)
+    register = context.on
     def on(event, handler):
         nonlocal callback
-        assert event == 'request'
-        callback = handler
+        register(event, handler)
+        if event == 'request':
+            callback = handler
     def goto(url, **kwargs):
         assert url == "https://tenant.example.test"
         assert kwargs['wait_until'] == 'commit'
@@ -97,31 +119,43 @@ def install_fake_browser(monkeypatch, *, capture=True, closed=False, events=(), 
         elif closed:
             context.pages.clear()
     context.on = on
-    context.new_page = lambda: page
+    def new_page():
+        context.emit('page', page)
+        return page
+    context.new_page = new_page
     def close_context():
         lifecycle.append('context_closed')
+        page.emit('close')
+        context.emit('close')
         if cleanup_error is not None:
             raise cleanup_error
     context.close = close_context
     class Event:
-        def __init__(self, predicate):
+        def __init__(self, predicate, timeout):
             self.predicate = predicate
+            self.timeout = timeout
         def __enter__(self):
             return self
         def __exit__(self, *args):
+            if clock is not None:
+                clock.now += self.timeout / 1000
             if pending_events:
                 event = pending_events.pop(0)(context, callback)
                 if self.predicate(event):
                     return
             raise PlaywrightTimeoutError('synthetic event timeout')
     def expect_event(name, *, predicate, timeout):
-        assert name == 'request' and timeout == 100
-        return Event(predicate)
+        assert name == 'request' and 0 < timeout <= 100
+        return Event(predicate, timeout)
     context.expect_event = expect_event
     page.goto = goto
     page.wait_for_timeout = lambda milliseconds: pytest.fail('Sign-in wait must not depend on a particular page')
-    browser = SimpleNamespace(new_context=lambda **kwargs: context,
-                              close=lambda: lifecycle.append('browser_closed'), is_connected=lambda: True)
+    def close_browser():
+        lifecycle.append('browser_closed')
+        browser.emit('disconnected')
+    browser = emitter(new_context=lambda **kwargs: context,
+                      close=close_browser, is_connected=lambda: True)
+    context.browser = browser
     class Manager:
         def __enter__(self):
             return SimpleNamespace(chromium=SimpleNamespace(launch=lambda **kwargs: browser))
@@ -193,6 +227,7 @@ def test_browser_stage_errors_are_fixed_and_never_forward_raw_exceptions(monkeyp
     def fail_wait(context, observe):
         if stage == 'closed':
             context.pages.clear()
+            context.emit('close')
         raise PlaywrightError(TOKEN)
 
     lifecycle = install_fake_browser(
@@ -569,3 +604,77 @@ def test_broken_result_pipe_does_not_print_credential_bearing_exception(monkeypa
     captured = capsys.readouterr()
     assert captured.out == captured.err == ''
     assert pipe.closed
+
+
+@pytest.mark.parametrize('replacement_at', [2.1, 9.9])
+def test_empty_tab_gap_allows_replacement_until_ten_seconds(monkeypatch, replacement_at):
+    clock = Clock()
+
+    def replace(context, observe):
+        # Delivery happens near the end of the grace period, after a real gap.
+        clock.now = replacement_at
+        page = SimpleNamespace(on=lambda *args: None)
+        context.pages = [page]
+        context.emit('page', page)
+        event = request(header=f'Bearer {TOKEN}')
+        observe(event)
+        return event
+
+    lifecycle = install_fake_browser(monkeypatch, capture=False, closed=True,
+                                     events=[replace], clock=clock)
+    def fetch(self):
+        assert lifecycle == ['context_closed', 'browser_closed', 'driver_stopped']
+        return [], {'pagination_validated': True}
+    monkeypatch.setattr(WorkflowApiClient, 'fetch_all_records', fetch)
+    result = auth._fetch_with_browser(DashboardConfig(), lambda _: None, threading.Event(),
+                                     channel='msedge', inspect_only=False, sign_in_timeout=600)
+    assert result['fetch']['pagination_validated']
+    assert clock.now == replacement_at
+
+
+@pytest.mark.parametrize('timeout, expected, elapsed', [(600, 'closed', 10), (3, 'timeout', 3)])
+def test_empty_tab_wait_is_bounded_by_grace_and_signin_deadline(monkeypatch, timeout, expected, elapsed):
+    clock = Clock()
+    install_fake_browser(monkeypatch, capture=False, closed=True, clock=clock)
+    with pytest.raises(auth.BrowserAuthError) as error:
+        auth._fetch_with_browser(DashboardConfig(), lambda _: None, threading.Event(),
+                                 channel='msedge', inspect_only=False, sign_in_timeout=timeout)
+    assert error.value.code == expected
+    assert clock.now == pytest.approx(elapsed)
+
+
+@pytest.mark.parametrize('event', ['disconnect', 'context_close', 'cancel'])
+def test_empty_tab_wait_stops_promptly_on_terminal_event(monkeypatch, event):
+    clock = Clock()
+    cancel = threading.Event()
+    def stop(context, observe):
+        if event == 'cancel':
+            cancel.set()
+        elif event == 'disconnect':
+            context.browser.emit('disconnected')
+        else:
+            context.emit('close')
+    install_fake_browser(monkeypatch, capture=False, closed=True, clock=clock, events=[stop])
+    with pytest.raises(auth.BrowserAuthError) as error:
+        auth._fetch_with_browser(DashboardConfig(), lambda _: None, cancel,
+                                 channel='msedge', inspect_only=False, sign_in_timeout=600)
+    assert error.value.code == ('cancelled' if event == 'cancel' else 'closed')
+    assert clock.now == pytest.approx(0.1)
+
+
+def test_replacement_page_resets_empty_tab_grace(monkeypatch):
+    clock = Clock()
+    def replace(context, observe):
+        clock.now = 9
+        page = SimpleNamespace(on=lambda *args: None)
+        context.pages = [page]
+        context.emit('page', page)
+    def close_replacement(context, observe):
+        context.pages.clear()
+    install_fake_browser(monkeypatch, capture=False, closed=True, clock=clock,
+                         events=[replace, close_replacement])
+    with pytest.raises(auth.BrowserAuthError) as error:
+        auth._fetch_with_browser(DashboardConfig(), lambda _: None, threading.Event(),
+                                 channel='msedge', inspect_only=False, sign_in_timeout=600)
+    assert error.value.code == 'closed'
+    assert clock.now == pytest.approx(19.1)

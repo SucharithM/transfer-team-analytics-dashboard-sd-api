@@ -343,3 +343,56 @@ def test_delayed_events_are_associated_with_the_original_attempt():
     reports = value.reports()
     assert 'dashboard.open.failed' not in reports[0][1]
     assert 'dashboard.open.failed' in reports[1][1]
+
+
+@pytest.mark.parametrize('reason', ['disconnected', 'context_closed', 'no_pages', 'observation_error'])
+def test_observation_failure_has_safe_reason_and_cleanup_phase(monkeypatch, reason):
+    from .test_browser_auth import Clock
+    clock = Clock()
+    def fail(context, observe):
+        if reason == 'disconnected':
+            context.browser.emit('disconnected')
+        elif reason == 'context_closed':
+            context.emit('close')
+        elif reason == 'observation_error':
+            raise PlaywrightError('|'.join(PRIVATE_VALUES))
+    install_fake_browser(monkeypatch, capture=False, closed=reason == 'no_pages',
+                         events=[fail], clock=clock)
+    monkeypatch.setattr(auth.os, 'setsid', lambda: None, raising=False)
+    pipe = Pipe()
+    ready = threading.Event()
+    ready.set()
+    auth._worker(DashboardConfig(), pipe, threading.Event(), ready, 'msedge', False, 600,
+                 diagnostics_enabled=True)
+    events = [data for kind, data in pipe.messages if kind == 'diagnostic']
+    failed = next(e for e in events if e['code'] == 'browser.observe.failed')
+    assert failed['details'] == {'auth_code': 'signin' if reason == 'observation_error' else 'closed',
+                                  'reason': reason}
+    assert events.index(failed) < next(i for i, e in enumerate(events) if e['code'] == 'browser.context_close.start')
+    assert any(e['code'] == 'browser.page.opened' and e['details']['closure_phase'] == 'signin' for e in events)
+    for code in ('browser.page.closed', 'browser.context.closed', 'browser.disconnected'):
+        assert any(e['code'] == code and e['details']['closure_phase'] == 'cleanup' for e in events)
+    assert all(logs.validate_event(e) is not None for e in events)
+    assert_private_absent(pipe.messages)
+
+
+@pytest.mark.parametrize('details', [{'reason': TOKEN}, {'closure_phase': TOKEN},
+                                    {'reason': True}, {'closure_phase': 1}])
+def test_lifecycle_fields_reject_unknown_values(details):
+    assert logs.validate_event(safe_event(**details)) is None
+
+
+def test_page_crash_event_contains_no_page_data(monkeypatch):
+    from .test_browser_auth import Clock
+    def crash(context, observe):
+        context.pages[0].emit('crash', SimpleNamespace(url=PRIVATE_VALUES[4]))
+        context.emit('close')
+    install_fake_browser(monkeypatch, capture=False, clock=Clock(), events=[crash])
+    events = []
+    with logs.capture(events.append):
+        with pytest.raises(auth.BrowserAuthError):
+            auth._fetch_with_browser(DashboardConfig(), lambda _: None, threading.Event(),
+                                     channel='msedge', inspect_only=False, sign_in_timeout=600)
+    event = next(e for e in events if e['code'] == 'browser.page.crashed')
+    assert event['details'] == {'closure_phase': 'signin'}
+    assert_private_absent(events)

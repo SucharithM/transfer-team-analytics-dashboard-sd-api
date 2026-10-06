@@ -76,6 +76,10 @@ Microsoft sign-in and MFA, and open the eTrieve workflow dashboard if it does no
 open automatically. The folder chooser appears on every generation, starting
 at your last selected folder. First use starts in Documents (or your home folder
 if Documents does not exist).
+During sign-in, an empty tab list is allowed for up to 10 seconds to accommodate
+replacement tabs after MFA, within the overall 10-minute sign-in timeout.
+Browser disconnection or context closure ends the attempt immediately; Cancel
+remains available during the wait.
 The app observes only the bearer header sent to the exact configured HTTPS API
 endpoint. The sign-in page opens at that endpoint's origin. It does not fill in passwords, read your usual browser profile, save
 sign-in state, or collect Microsoft tokens. No registered desktop OAuth client
@@ -128,7 +132,7 @@ After an error or warning, **Send Error Logs** opens technical diagnostics with
 selectable during the session, including after a successful retry. The button is
 disabled while generation is active. Settings-load failures retain a small window
 with the same copy action. Reports include stage outcomes, versions, approved
-error categories, and numeric error codes; they exclude credentials, workflow
+error categories, browser lifecycle events and closure reasons, and numeric error codes; they exclude credentials, workflow
 records, settings, and personal/system paths. Diagnostics are kept only in memory;
 the app does not save or transmit log files. See SECURITY.md for the exact rules.
 
