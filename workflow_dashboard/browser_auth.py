@@ -23,10 +23,11 @@ from .process_guard import ProcessGuard
 from .diagnostics import capture, emit, enabled, operation, validate_event, accept_worker_event, MAX_EVENTS
 
 SIGN_IN_TIMEOUT = 600
+EMPTY_TAB_GRACE_SECONDS = 10
 MESSAGES = {
     "cancelled": "Generation cancelled. No dashboard was created.",
     "timeout": "Sign-in timed out. Click Generate Dashboard to try again.",
-    "closed": "The sign-in browser was closed. Start again to sign in.",
+    "closed": "The browser session ended before workflow access was available. Start again to sign in.",
     "expired": "Your eTrieve session expired. Sign in again; fetching will restart from the beginning.",
     "forbidden": "Your account cannot access these workflow records. Contact your eTrieve administrator.",
     "network": "Cannot reach the workflow API. Check your network and try again.",
@@ -82,8 +83,41 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
         raise BrowserAuthError("dependency") from None
     token = None
     client = None
+    context_closed = False
+    disconnected = False
+    cleanup_started = False
+    empty_since = None
+
+    def lifecycle(code):
+        emit(code, closure_phase='cleanup' if cleanup_started else 'signin')
+
+    def on_disconnect(*_):
+        nonlocal disconnected
+        disconnected = True
+        lifecycle('browser.disconnected')
+
+    def on_context_close(*_):
+        nonlocal context_closed
+        context_closed = True
+        lifecycle('browser.context.closed')
+
+    def on_page(page):
+        nonlocal empty_since
+        empty_since = None
+        lifecycle('browser.page.opened')
+        page.on('close', lambda *_: lifecycle('browser.page.closed'))
+        page.on('crash', lambda *_: lifecycle('browser.page.crashed'))
+
+    def closure_reason():
+        if disconnected or not browser.is_connected():
+            return 'disconnected'
+        if context_closed:
+            return 'context_closed'
+        return None
 
     def close_browser_resource(resource):
+        nonlocal cleanup_started
+        cleanup_started = True
         name = 'browser.context_close' if resource is context else 'browser.close'
         try:
             with operation(name):
@@ -101,6 +135,7 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
                 emit('browser.version', browser_version=version)
             context = None
             try:
+                browser.on('disconnected', on_disconnect)
                 with operation('browser.context'):
                     context = browser.new_context(accept_downloads=False)
                 try:
@@ -112,6 +147,8 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
                                 emit('credential.observed')
 
                     context.on("request", observe)
+                    context.on('close', on_context_close)
+                    context.on('page', on_page)
                     page = context.new_page()
                     deadline = time.monotonic() + sign_in_timeout
                     endpoint = urlsplit(config.api_url)
@@ -123,22 +160,51 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
                             page.goto(login_url, wait_until="commit", timeout=30_000)
                     except PlaywrightError:
                         raise BrowserAuthError("navigation") from None
-                    with operation('browser.observe'):
+                    empty_since = None
+                    reason = None
+                    emit('browser.observe.start')
+                    try:
                         while token is None:
                             if cancel.is_set():
                                 raise BrowserAuthError("cancelled")
-                            if time.monotonic() >= deadline:
+                            now = time.monotonic()
+                            if now >= deadline:
                                 raise BrowserAuthError("timeout")
-                            if not browser.is_connected() or not context.pages:
+                            reason = closure_reason()
+                            if reason:
                                 raise BrowserAuthError("closed")
+                            wait_deadline = deadline
+                            if context.pages:
+                                empty_since = None
+                            else:
+                                if empty_since is None:
+                                    empty_since = now
+                                wait_deadline = min(deadline, empty_since + EMPTY_TAB_GRACE_SECONDS)
+                                if now >= wait_deadline:
+                                    reason = 'no_pages'
+                                    raise BrowserAuthError('closed')
                             try:
-                                with context.expect_event("request", predicate=lambda request: token is not None, timeout=100):
+                                with context.expect_event("request", predicate=lambda request: token is not None,
+                                                          timeout=min(100, (wait_deadline - now) * 1000)):
                                     pass
                             except PlaywrightTimeoutError:
                                 pass
                             except PlaywrightError:
-                                code = "closed" if not browser.is_connected() or not context.pages else "signin"
+                                reason = closure_reason()
+                                code = 'closed' if reason else 'signin'
+                                reason = reason or 'observation_error'
                                 raise BrowserAuthError(code) from None
+                    except BrowserAuthError as error:
+                        details = {'auth_code': error.code}
+                        if reason is not None:
+                            details['reason'] = reason
+                        emit('browser.observe.failed', **details)
+                        raise
+                    except BaseException as error:
+                        emit('browser.observe.failed', error=error, reason='observation_error')
+                        raise
+                    else:
+                        emit('browser.observe.done')
                 finally:
                     close_browser_resource(context)
             finally:

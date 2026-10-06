@@ -36,6 +36,11 @@ CATALOG = {f'{operation}.{outcome}': (
     'error' if outcome == 'failed' else 'info', f'{operation}: {outcome}'
 ) for operation in OPERATIONS for outcome in ('start', 'done', 'failed')}
 CATALOG.update({
+    'browser.page.opened': ('info', 'Browser page opened'),
+    'browser.page.closed': ('info', 'Browser page closed'),
+    'browser.page.crashed': ('warning', 'Browser page crashed'),
+    'browser.context.closed': ('info', 'Browser context closed'),
+    'browser.disconnected': ('info', 'Browser disconnected'),
     'api.response': ('info', 'API response status available'),
     'session.start': ('info', 'Application session started'),
     'attempt.start': ('info', 'Attempt started'),
@@ -83,6 +88,10 @@ def validate_details(value):
         if key == 'category' and type(item) is str and item in CATEGORIES:
             result[key] = item
         elif key == 'auth_code' and type(item) is str and item in AUTH_CODES:
+            result[key] = item
+        elif key == 'reason' and type(item) is str and item in ('disconnected', 'context_closed', 'no_pages', 'observation_error'):
+            result[key] = item
+        elif key == 'closure_phase' and type(item) is str and item in ('signin', 'cleanup'):
             result[key] = item
         elif key == 'browser_version' and _version(item) != 'unavailable':
             result[key] = item
