@@ -1,4 +1,5 @@
 """Ephemeral browser authentication. Credentials never cross the worker pipe."""
+
 from __future__ import annotations
 
 import json
@@ -20,9 +21,19 @@ from .api_client import (
 )
 from .config import DashboardConfig, DEFAULT_API_URL, is_secure_api_url
 from .process_guard import ProcessGuard
-from .diagnostics import capture, emit, bind_emitter, enabled, operation, validate_event, accept_worker_event, MAX_EVENTS
+from .diagnostics import (
+    capture,
+    emit,
+    bind_emitter,
+    enabled,
+    operation,
+    validate_event,
+    accept_worker_event,
+    MAX_EVENTS,
+)
 
 SIGN_IN_TIMEOUT = 600
+EMPTY_TAB_GRACE_SECONDS = 10
 EMPTY_TAB_GRACE_SECONDS = 10
 MESSAGES = {
     "cancelled": "Generation cancelled. No dashboard was created.",
@@ -57,9 +68,15 @@ def is_packages_request(url: str, *, api_url: str = DEFAULT_API_URL) -> bool:
         if not is_secure_api_url(api_url):
             return False
         actual, expected = urlsplit(url), urlsplit(api_url)
-        return (actual.scheme == "https" and actual.hostname == expected.hostname
-                and actual.port in (None, 443) and actual.path == expected.path
-                and actual.username is None and actual.password is None and not actual.fragment)
+        return (
+            actual.scheme == "https"
+            and actual.hostname == expected.hostname
+            and actual.port in (None, 443)
+            and actual.path == expected.path
+            and actual.username is None
+            and actual.password is None
+            and not actual.fragment
+        )
     except ValueError:
         return False
 
@@ -76,9 +93,15 @@ def bearer_from_request(request, *, api_url: str = DEFAULT_API_URL) -> str | Non
     return parts[1]
 
 
-def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_timeout):
+def _fetch_with_browser(
+    config, send, cancel, *, channel, inspect_only, sign_in_timeout
+):
     try:
-        from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError, sync_playwright
+        from playwright.sync_api import (
+            Error as PlaywrightError,
+            TimeoutError as PlaywrightTimeoutError,
+            sync_playwright,
+        )
     except ImportError:
         raise BrowserAuthError("dependency") from None
     token = None
@@ -90,36 +113,36 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
     emit_callback = bind_emitter()
 
     def lifecycle(code):
-        emit_callback(code, closure_phase='cleanup' if cleanup_started else 'signin')
+        emit_callback(code, closure_phase="cleanup" if cleanup_started else "signin")
 
     def on_disconnect(*_):
         nonlocal disconnected
         disconnected = True
-        lifecycle('browser.disconnected')
+        lifecycle("browser.disconnected")
 
     def on_context_close(*_):
         nonlocal context_closed
         context_closed = True
-        lifecycle('browser.context.closed')
+        lifecycle("browser.context.closed")
 
     def on_page(page):
         nonlocal empty_since
         empty_since = None
-        lifecycle('browser.page.opened')
-        page.on('close', lambda *_: lifecycle('browser.page.closed'))
-        page.on('crash', lambda *_: lifecycle('browser.page.crashed'))
+        lifecycle("browser.page.opened")
+        page.on("close", lambda *_: lifecycle("browser.page.closed"))
+        page.on("crash", lambda *_: lifecycle("browser.page.crashed"))
 
     def closure_reason():
         if disconnected or not browser.is_connected():
-            return 'disconnected'
+            return "disconnected"
         if context_closed:
-            return 'context_closed'
+            return "context_closed"
         return None
 
     def close_browser_resource(resource):
         nonlocal cleanup_started
         cleanup_started = True
-        name = 'browser.context_close' if resource is context else 'browser.close'
+        name = "browser.context_close" if resource is context else "browser.close"
         try:
             with operation(name):
                 resource.close()
@@ -129,27 +152,28 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
     try:
         send(("progress", "signin"))
         with sync_playwright() as playwright:
-            with operation('browser.launch'):
+            with operation("browser.launch"):
                 browser = playwright.chromium.launch(channel=channel, headless=False)
-            version = getattr(browser, 'version', None)
+            version = getattr(browser, "version", None)
             if type(version) is str:
-                emit('browser.version', browser_version=version)
+                emit("browser.version", browser_version=version)
             context = None
             try:
-                browser.on('disconnected', on_disconnect)
-                with operation('browser.context'):
+                browser.on("disconnected", on_disconnect)
+                with operation("browser.context"):
                     context = browser.new_context(accept_downloads=False)
                 try:
+
                     def observe(request):
                         nonlocal token
                         if token is None:
                             token = bearer_from_request(request, api_url=config.api_url)
                             if token is not None:
-                                emit_callback('credential.observed')
+                                emit_callback("credential.observed")
 
                     context.on("request", observe)
-                    context.on('close', on_context_close)
-                    context.on('page', on_page)
+                    context.on("close", on_context_close)
+                    context.on("page", on_page)
                     page = context.new_page()
                     deadline = time.monotonic() + sign_in_timeout
                     endpoint = urlsplit(config.api_url)
@@ -157,13 +181,13 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
                     try:
                         # Observe the rest of SSO/MFA through the context rather
                         # than waiting for a particular login document to load.
-                        with operation('browser.navigate'):
+                        with operation("browser.navigate"):
                             page.goto(login_url, wait_until="commit", timeout=30_000)
                     except PlaywrightError:
                         raise BrowserAuthError("navigation") from None
                     empty_since = None
                     reason = None
-                    emit('browser.observe.start')
+                    emit("browser.observe.start")
                     try:
                         while token is None:
                             if cancel.is_set():
@@ -180,50 +204,64 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
                             else:
                                 if empty_since is None:
                                     empty_since = now
-                                wait_deadline = min(deadline, empty_since + EMPTY_TAB_GRACE_SECONDS)
+                                wait_deadline = min(
+                                    deadline, empty_since + EMPTY_TAB_GRACE_SECONDS
+                                )
                                 if now >= wait_deadline:
-                                    reason = 'no_pages'
-                                    raise BrowserAuthError('closed')
+                                    reason = "no_pages"
+                                    raise BrowserAuthError("closed")
                             try:
-                                with context.expect_event("request", predicate=lambda request: token is not None,
-                                                          timeout=min(100, (wait_deadline - now) * 1000)):
+                                with context.expect_event(
+                                    "request",
+                                    predicate=lambda request: token is not None,
+                                    timeout=min(100, (wait_deadline - now) * 1000),
+                                ):
                                     pass
                             except PlaywrightTimeoutError:
                                 pass
                             except PlaywrightError:
                                 reason = closure_reason()
-                                code = 'closed' if reason else 'signin'
-                                reason = reason or 'observation_error'
+                                code = "closed" if reason else "signin"
+                                reason = reason or "observation_error"
                                 raise BrowserAuthError(code) from None
                     except BrowserAuthError as error:
-                        details = {'auth_code': error.code}
+                        details = {"auth_code": error.code}
                         if reason is not None:
-                            details['reason'] = reason
-                        emit('browser.observe.failed', **details)
+                            details["reason"] = reason
+                        emit("browser.observe.failed", **details)
                         raise
                     except BaseException as error:
-                        emit('browser.observe.failed', error=error, reason='observation_error')
+                        emit(
+                            "browser.observe.failed",
+                            error=error,
+                            reason="observation_error",
+                        )
                         raise
                     else:
-                        emit('browser.observe.done')
+                        emit("browser.observe.done")
                 finally:
                     close_browser_resource(context)
             finally:
                 close_browser_resource(browser)
-        emit('browser.driver_close.done')
+        emit("browser.driver_close.done")
 
         def check_cancel():
             if cancel.is_set():
                 raise BrowserAuthError("cancelled")
             send(("progress", "fetching"))
 
-        client = WorkflowApiClient(config, bearer_token=token, before_request=check_cancel)
+        client = WorkflowApiClient(
+            config, bearer_token=token, before_request=check_cancel
+        )
         if inspect_only:
             page = client.fetch_page(offset=0, take=config.api_take)
             client._validate_page_payload(page, page_number=1)
             result = inspect_payload(page.raw, source="api")
-            result["pagination"] = {"requested_take": config.api_take,
-                                    "reported_total": page.total, "first_page_records": len(page.records)}
+            result["pagination"] = {
+                "requested_take": config.api_take,
+                "reported_total": page.total,
+                "first_page_records": len(page.records),
+            }
         else:
             records, metadata = client.fetch_all_records()
             result = {"records": records, "fetch": metadata}
@@ -239,11 +277,28 @@ def _fetch_with_browser(config, send, cancel, *, channel, inspect_only, sign_in_
         token = None
 
 
-def _worker(config, send_pipe, cancel, ready, channel, inspect_only, sign_in_timeout, *, diagnostics_enabled=False):
+def _worker(
+    config,
+    send_pipe,
+    cancel,
+    ready,
+    channel,
+    inspect_only,
+    sign_in_timeout,
+    *,
+    diagnostics_enabled=False,
+):
     """No raw exception objects, tracebacks, request objects, or headers leave here."""
     if os.name != "nt":
         os.setsid()
-    for name in ("DEBUG", "PWDEBUG", "WORKFLOW_API_TOKEN", "ETRIEVE_API_TOKEN", "SSLKEYLOGFILE", "CHROME_LOG_FILE"):
+    for name in (
+        "DEBUG",
+        "PWDEBUG",
+        "WORKFLOW_API_TOKEN",
+        "ETRIEVE_API_TOKEN",
+        "SSLKEYLOGFILE",
+        "CHROME_LOG_FILE",
+    ):
         os.environ.pop(name, None)
 
     def progress(message):
@@ -255,14 +310,20 @@ def _worker(config, send_pipe, cancel, ready, channel, inspect_only, sign_in_tim
     def diagnostic(event):
         safe = validate_event(event)
         if safe is not None:
-            progress(('diagnostic', safe))
+            progress(("diagnostic", safe))
 
     try:
         if not ready.wait(30):
             raise BrowserAuthError("policy")
         with capture(diagnostic if diagnostics_enabled else None, bounded=True):
-            result = _fetch_with_browser(config, progress, cancel, channel=channel,
-                                        inspect_only=inspect_only, sign_in_timeout=sign_in_timeout)
+            result = _fetch_with_browser(
+                config,
+                progress,
+                cancel,
+                channel=channel,
+                inspect_only=inspect_only,
+                sign_in_timeout=sign_in_timeout,
+            )
         outcome = ("result", result)
     except BrowserAuthError as exc:
         outcome = ("error", exc.code)
@@ -291,11 +352,25 @@ def _worker(config, send_pipe, cancel, ready, channel, inspect_only, sign_in_tim
         send_pipe.close()
 
 
-def browser_fetch(config: DashboardConfig, *, cancel=None, progress: Callable[[str], None] | None = None,
-                  channel="msedge", inspect_only=False, sign_in_timeout=SIGN_IN_TIMEOUT, diagnostics=None):
+def browser_fetch(
+    config: DashboardConfig,
+    *,
+    cancel=None,
+    progress: Callable[[str], None] | None = None,
+    channel="msedge",
+    inspect_only=False,
+    sign_in_timeout=SIGN_IN_TIMEOUT,
+    diagnostics=None,
+):
     with capture(diagnostics):
-        return _browser_fetch(config, cancel=cancel, progress=progress, channel=channel,
-                              inspect_only=inspect_only, sign_in_timeout=sign_in_timeout)
+        return _browser_fetch(
+            config,
+            cancel=cancel,
+            progress=progress,
+            channel=channel,
+            inspect_only=inspect_only,
+            sign_in_timeout=sign_in_timeout,
+        )
 
 
 def _browser_fetch(config, *, cancel, progress, channel, inspect_only, sign_in_timeout):
@@ -303,16 +378,32 @@ def _browser_fetch(config, *, cancel, progress, channel, inspect_only, sign_in_t
     if not is_packages_request(config.api_url, api_url=config.api_url):
         raise BrowserAuthError("endpoint")
     # Never transfer legacy credentials or arbitrary caller-supplied auth headers.
-    safe_config = replace(config, api_token=None,
-                          headers={k: v for k, v in config.headers.items()
-                                   if k.casefold() in ("accept", "user-agent")})
+    safe_config = replace(
+        config,
+        api_token=None,
+        headers={
+            k: v
+            for k, v in config.headers.items()
+            if k.casefold() in ("accept", "user-agent")
+        },
+    )
     ctx = mp.get_context("spawn")
     cancelled = ctx.Event()
     ready = ctx.Event()
     receive, send = ctx.Pipe(duplex=False)
-    process = ctx.Process(target=_worker,
-                         args=(safe_config, send, cancelled, ready, channel, inspect_only, sign_in_timeout),
-                         kwargs={'diagnostics_enabled': True} if enabled() else {})
+    process = ctx.Process(
+        target=_worker,
+        args=(
+            safe_config,
+            send,
+            cancelled,
+            ready,
+            channel,
+            inspect_only,
+            sign_in_timeout,
+        ),
+        kwargs={"diagnostics_enabled": True} if enabled() else {},
+    )
     guard = None
     started = False
     terminal = None
@@ -324,12 +415,12 @@ def _browser_fetch(config, *, cancel, progress, channel, inspect_only, sign_in_t
             guard = ProcessGuard()
         except OSError:
             raise BrowserAuthError("policy") from None
-        with operation('worker.start'):
+        with operation("worker.start"):
             process.start()
         started = True
         send.close()
         try:
-            with operation('worker.attach'):
+            with operation("worker.attach"):
                 guard.attach(process.pid)
         except OSError:
             raise BrowserAuthError("policy") from None
@@ -349,46 +440,55 @@ def _browser_fetch(config, *, cancel, progress, channel, inspect_only, sign_in_t
                         # Drain a message sent between the timed poll and exit.
                         has_message = receive.poll()
                         if not has_message:
-                            emit('worker.transport.failed')
+                            emit("worker.transport.failed")
                             raise BrowserAuthError("worker")
                     if has_message:
                         message = receive.recv()
-                        if type(message) is not tuple or len(message) != 2 or type(message[0]) is not str:
-                            emit('worker.transport.failed')
-                            raise BrowserAuthError('worker')
+                        if (
+                            type(message) is not tuple
+                            or len(message) != 2
+                            or type(message[0]) is not str
+                        ):
+                            emit("worker.transport.failed")
+                            raise BrowserAuthError("worker")
                         kind, value = message
                 except (EOFError, OSError) as error:
-                    emit('worker.transport.failed', error=error)
+                    emit("worker.transport.failed", error=error)
                     raise BrowserAuthError("worker") from None
                 if has_message:
-                    if kind == 'diagnostic':
+                    if kind == "diagnostic":
                         diagnostic_count += 1
                         safe = validate_event(value)
                         if safe is None or diagnostic_count > MAX_EVENTS:
-                            emit('worker.transport.failed')
-                            raise BrowserAuthError('worker')
+                            emit("worker.transport.failed")
+                            raise BrowserAuthError("worker")
                         # The parent collector receives primitives only, after
                         # independent validation of the credential worker's data.
                         if not accept_worker_event(safe):
-                            emit('worker.transport.failed')
-                            raise BrowserAuthError('worker')
+                            emit("worker.transport.failed")
+                            raise BrowserAuthError("worker")
                     elif kind == "progress":
-                        if type(value) is not str or value not in ('signin', 'fetching'):
-                            emit('worker.transport.failed')
-                            raise BrowserAuthError('worker')
+                        if type(value) is not str or value not in (
+                            "signin",
+                            "fetching",
+                        ):
+                            emit("worker.transport.failed")
+                            raise BrowserAuthError("worker")
                         if progress is not None:
                             progress(value)
                     elif kind in ("result", "error"):
-                        if kind == 'error' and (type(value) is not str or value not in MESSAGES):
-                            emit('worker.transport.failed')
-                            raise BrowserAuthError('worker')
-                        if kind == 'result' and type(value) is not dict:
-                            emit('worker.transport.failed')
-                            raise BrowserAuthError('worker')
+                        if kind == "error" and (
+                            type(value) is not str or value not in MESSAGES
+                        ):
+                            emit("worker.transport.failed")
+                            raise BrowserAuthError("worker")
+                        if kind == "result" and type(value) is not dict:
+                            emit("worker.transport.failed")
+                            raise BrowserAuthError("worker")
                         terminal = (kind, value)
                         terminal_time = time.monotonic()
                     else:
-                        emit('worker.transport.failed')
+                        emit("worker.transport.failed")
                         raise BrowserAuthError("worker")
             if terminal is not None:
                 process.join(0.1)
@@ -397,19 +497,22 @@ def _browser_fetch(config, *, cancel, progress, channel, inspect_only, sign_in_t
                 if time.monotonic() - terminal_time > 10:
                     raise BrowserAuthError("worker")
         if process.exitcode != 0:
-            emit('worker.exit.failed', exit_code=process.exitcode)
+            emit("worker.exit.failed", exit_code=process.exitcode)
             raise BrowserAuthError("worker")
-        emit('worker.exit.done', exit_code=process.exitcode)
+        emit("worker.exit.done", exit_code=process.exitcode)
         guard.close()
         if terminal[0] == "error":
-            emit('attempt.failed', auth_code=terminal[1] if terminal[1] in MESSAGES else 'worker')
+            emit(
+                "attempt.failed",
+                auth_code=terminal[1] if terminal[1] in MESSAGES else "worker",
+            )
             raise BrowserAuthError(terminal[1])
         return terminal[1]
     except OSError:
         raise BrowserAuthError("worker") from None
     finally:
         cancelled.set()
-        with operation('worker.cleanup'):
+        with operation("worker.cleanup"):
             try:
                 if guard is not None:
                     guard.close()
