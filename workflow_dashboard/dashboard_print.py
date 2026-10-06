@@ -2,7 +2,6 @@
 
 from . import dashboard_content as content
 
-
 PRINT_STYLES = """
     .pdf-export { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
     .pdf-export-control { position: relative; flex: 0 0 auto; }
@@ -121,11 +120,13 @@ PRINT_STYLES = """
 
 def export_script(json_for_script) -> str:
     """Keep status copy escaped exactly like other inline dashboard scripts."""
-    messages = json_for_script({
-        "ready": content.PAGE.save_pdf,
-        "preparing": content.PAGE.preparing_pdf,
-        "error": content.PAGE.pdf_error,
-    })
+    messages = json_for_script(
+        {
+            "ready": content.PAGE.save_pdf,
+            "preparing": content.PAGE.preparing_pdf,
+            "error": content.PAGE.pdf_error,
+        }
+    )
     return """
     <script>
       (() => {

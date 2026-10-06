@@ -103,7 +103,11 @@ def _category_color(
         if key in STAFF_COLORS:
             return STAFF_COLORS[key]
         staff_colors = {
-            _category_key(member): ("#F48FB1" if index == 4 else CATEGORY_COLORWAY[index % len(CATEGORY_COLORWAY)])
+            _category_key(member): (
+                "#F48FB1"
+                if index == 4
+                else CATEGORY_COLORWAY[index % len(CATEGORY_COLORWAY)]
+            )
             for index, member in enumerate(category_order)
         }
         return staff_colors.get(key, _stable_fallback_color(value))
@@ -1417,7 +1421,9 @@ def _age_idle_action_matrix_card(
         else " · complete timing coverage"
     )
     counts = table["action_bucket"].value_counts().to_dict()
-    bucket_labels = content.action_bucket_labels(float(table.attrs.get("backlog_age_days", 7)))
+    bucket_labels = content.action_bucket_labels(
+        float(table.attrs.get("backlog_age_days", 7))
+    )
     buttons = []
     for bucket in bucket_labels:
         count = int(counts.get(bucket, 0))
@@ -1447,9 +1453,7 @@ def _age_idle_action_matrix_card(
             "last_activity_at": last_activity_label,
             "action_bucket": str(row["action_bucket"]),
         }
-        for (_, row), last_activity_label in zip(
-            table.iterrows(), last_activity_labels
-        )
+        for (_, row), last_activity_label in zip(table.iterrows(), last_activity_labels)
     ]
     matrix_data = _json_for_script(rows)
     return f"""
@@ -1624,8 +1628,7 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
     }
     if summary.empty or not required_columns.issubset(summary.columns):
         return (
-            '<div class="empty-table">'
-            f"{html.escape(table_copy.empty_message)}</div>"
+            '<div class="empty-table">' f"{html.escape(table_copy.empty_message)}</div>"
         )
 
     display_columns = [
@@ -1639,10 +1642,7 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
         "median_completion_summary",
     ]
     headers = "".join(
-        (
-            '<th scope="col">'
-            f"{html.escape(table_copy.header_labels[column])}</th>"
-        )
+        ('<th scope="col">' f"{html.escape(table_copy.header_labels[column])}</th>")
         for column in display_columns
     )
     rows: list[str] = []
@@ -1652,9 +1652,11 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
         completed_count = int(row["completed_count"])
         backlog_count = int(row["backlog_count"])
         completion_rate = format_one_decimal(
-            float(row["completion_rate"]) * 100
-            if pd.notna(row["completion_rate"])
-            else None,
+            (
+                float(row["completion_rate"]) * 100
+                if pd.notna(row["completion_rate"])
+                else None
+            ),
             suffix="%",
             missing="—",
         )
@@ -1678,14 +1680,8 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
             f'<td class="numeric-cell">{completed_count:,}</td>',
             f'<td class="numeric-cell">{completion_rate}</td>',
             f'<td class="numeric-cell">{backlog_count:,}</td>',
-            (
-                '<td class="metric-cell">'
-                f"<strong>{median_open_age}</strong></td>"
-            ),
-            (
-                '<td class="metric-cell">'
-                f"<strong>{median_completion}</strong></td>"
-            ),
+            ('<td class="metric-cell">' f"<strong>{median_open_age}</strong></td>"),
+            ('<td class="metric-cell">' f"<strong>{median_completion}</strong></td>"),
         ]
         rows.append(f"<tr>{''.join(cells)}</tr>")
     return (
@@ -1718,15 +1714,12 @@ def _table_html(exceptions: pd.DataFrame) -> str:
     ].copy()
     if "age_days" in table.columns:
         table["_age_sort"] = pd.to_numeric(table["age_days"], errors="coerce")
-        table = (
-            table.sort_values(
-                "_age_sort",
-                ascending=False,
-                na_position="last",
-                kind="stable",
-            )
-            .drop(columns="_age_sort")
-        )
+        table = table.sort_values(
+            "_age_sort",
+            ascending=False,
+            na_position="last",
+            kind="stable",
+        ).drop(columns="_age_sort")
     for date_col in ("submitted_at", "last_activity_at"):
         if date_col in table.columns:
             table[date_col] = (

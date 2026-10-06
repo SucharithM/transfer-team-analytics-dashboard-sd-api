@@ -115,6 +115,10 @@ class PageContent:
     save_pdf_hint: str
     preparing_pdf: str
     pdf_error: str
+    save_pdf: str
+    save_pdf_hint: str
+    preparing_pdf: str
+    pdf_error: str
 
 
 @dataclass(frozen=True)
