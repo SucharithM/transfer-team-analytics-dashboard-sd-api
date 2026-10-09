@@ -34,6 +34,7 @@ from .diagnostics import (
 
 SIGN_IN_TIMEOUT = 600
 EMPTY_TAB_GRACE_SECONDS = 10
+EMPTY_TAB_GRACE_SECONDS = 10
 MESSAGES = {
     "cancelled": "Generation cancelled. No dashboard was created.",
     "timeout": "Sign-in timed out. Click Generate Dashboard to try again.",
@@ -161,6 +162,8 @@ def _fetch_with_browser(
                 emit("browser.version", browser_version=version)
             context = None
             try:
+                browser.on("disconnected", on_disconnect)
+                with operation("browser.context"):
                 browser.on("disconnected", on_disconnect)
                 with operation("browser.context"):
                     context = browser.new_context(accept_downloads=False)

@@ -14,6 +14,10 @@ from playwright.sync_api import (
     Error as PlaywrightError,
     TimeoutError as PlaywrightTimeoutError,
 )
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from workflow_dashboard import browser_auth as auth
 from workflow_dashboard import desktop
@@ -207,7 +211,19 @@ def install_fake_browser(
         "Sign-in wait must not depend on a particular page"
     )
 
+    page.wait_for_timeout = lambda milliseconds: pytest.fail(
+        "Sign-in wait must not depend on a particular page"
+    )
+
     def close_browser():
+        lifecycle.append("browser_closed")
+        browser.emit("disconnected")
+
+    browser = emitter(
+        new_context=lambda **kwargs: context,
+        close=close_browser,
+        is_connected=lambda: True,
+    )
         lifecycle.append("browser_closed")
         browser.emit("disconnected")
 
@@ -230,6 +246,17 @@ def install_fake_browser(
             )
 
         def __exit__(self, *args):
+            lifecycle.append("driver_stopped")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright.sync_api",
+        SimpleNamespace(
+            sync_playwright=Manager,
+            Error=PlaywrightError,
+            TimeoutError=PlaywrightTimeoutError,
+        ),
+    )
             lifecycle.append("driver_stopped")
 
     monkeypatch.setitem(
