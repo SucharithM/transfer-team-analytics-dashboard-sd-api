@@ -34,7 +34,6 @@ from .diagnostics import (
 
 SIGN_IN_TIMEOUT = 600
 EMPTY_TAB_GRACE_SECONDS = 10
-EMPTY_TAB_GRACE_SECONDS = 10
 MESSAGES = {
     "cancelled": "Generation cancelled. No dashboard was created.",
     "timeout": "Sign-in timed out. Click Generate Dashboard to try again.",
@@ -153,7 +152,10 @@ def _fetch_with_browser(
         send(("progress", "signin"))
         with sync_playwright() as playwright:
             with operation("browser.launch"):
-                browser = playwright.chromium.launch(channel=channel, headless=False)
+                launch_options = {"channel": channel, "headless": False}
+                if channel == "msedge":
+                    launch_options["args"] = ["--enable-automation"]
+                browser = playwright.chromium.launch(**launch_options)
             version = getattr(browser, "version", None)
             if type(version) is str:
                 emit("browser.version", browser_version=version)
@@ -179,8 +181,6 @@ def _fetch_with_browser(
                     endpoint = urlsplit(config.api_url)
                     login_url = f"https://{endpoint.netloc}"
                     try:
-                        # Observe the rest of SSO/MFA through the context rather
-                        # than waiting for a particular login document to load.
                         with operation("browser.navigate"):
                             page.goto(login_url, wait_until="commit", timeout=30_000)
                     except PlaywrightError:
