@@ -14,6 +14,10 @@ from playwright.sync_api import (
     Error as PlaywrightError,
     TimeoutError as PlaywrightTimeoutError,
 )
+from playwright.sync_api import (
+    Error as PlaywrightError,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from workflow_dashboard import browser_auth as auth
 from workflow_dashboard import desktop
@@ -115,6 +119,7 @@ def install_fake_browser(
     cleanup_error=None,
     clock=None,
     event_greenlets=False,
+    launch_options=None,
 ):
     lifecycle = []
     callback = None
@@ -206,7 +211,19 @@ def install_fake_browser(
         "Sign-in wait must not depend on a particular page"
     )
 
+    page.wait_for_timeout = lambda milliseconds: pytest.fail(
+        "Sign-in wait must not depend on a particular page"
+    )
+
     def close_browser():
+        lifecycle.append("browser_closed")
+        browser.emit("disconnected")
+
+    browser = emitter(
+        new_context=lambda **kwargs: context,
+        close=close_browser,
+        is_connected=lambda: True,
+    )
         lifecycle.append("browser_closed")
         browser.emit("disconnected")
 
@@ -217,13 +234,29 @@ def install_fake_browser(
     )
     context.browser = browser
 
+    def launch(**kwargs):
+        if launch_options is not None:
+            launch_options.append(kwargs)
+        return browser
+
     class Manager:
         def __enter__(self):
             return SimpleNamespace(
-                chromium=SimpleNamespace(launch=lambda **kwargs: browser)
+                chromium=SimpleNamespace(launch=launch)
             )
 
         def __exit__(self, *args):
+            lifecycle.append("driver_stopped")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright.sync_api",
+        SimpleNamespace(
+            sync_playwright=Manager,
+            Error=PlaywrightError,
+            TimeoutError=PlaywrightTimeoutError,
+        ),
+    )
             lifecycle.append("driver_stopped")
 
     monkeypatch.setitem(
@@ -974,3 +1007,24 @@ def test_replacement_page_resets_empty_tab_grace(monkeypatch):
         )
     assert error.value.code == "closed"
     assert clock.now == pytest.approx(19.1)
+
+
+@pytest.mark.parametrize("channel", ["msedge", "chrome"])
+def test_edge_signin_restores_automation_launch_flag(monkeypatch, channel):
+    launches = []
+    lifecycle = install_fake_browser(monkeypatch, launch_options=launches)
+
+    def fetch(self):
+        assert lifecycle == ["context_closed", "browser_closed", "driver_stopped"]
+        return [], {"pagination_validated": True}
+
+    monkeypatch.setattr(WorkflowApiClient, "fetch_all_records", fetch)
+    result = auth._fetch_with_browser(
+        DashboardConfig(), lambda _: None, threading.Event(),
+        channel=channel, inspect_only=False, sign_in_timeout=600,
+    )
+    expected = {"channel": channel, "headless": False}
+    if channel == "msedge":
+        expected["args"] = ["--enable-automation"]
+    assert launches == [expected]
+    assert result["fetch"]["pagination_validated"]

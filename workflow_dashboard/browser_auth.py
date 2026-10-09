@@ -153,12 +153,17 @@ def _fetch_with_browser(
         send(("progress", "signin"))
         with sync_playwright() as playwright:
             with operation("browser.launch"):
-                browser = playwright.chromium.launch(channel=channel, headless=False)
+                launch_options = {"channel": channel, "headless": False}
+                if channel == "msedge":
+                    launch_options["args"] = ["--enable-automation"]
+                browser = playwright.chromium.launch(**launch_options)
             version = getattr(browser, "version", None)
             if type(version) is str:
                 emit("browser.version", browser_version=version)
             context = None
             try:
+                browser.on("disconnected", on_disconnect)
+                with operation("browser.context"):
                 browser.on("disconnected", on_disconnect)
                 with operation("browser.context"):
                     context = browser.new_context(accept_downloads=False)
@@ -179,8 +184,6 @@ def _fetch_with_browser(
                     endpoint = urlsplit(config.api_url)
                     login_url = f"https://{endpoint.netloc}"
                     try:
-                        # Observe the rest of SSO/MFA through the context rather
-                        # than waiting for a particular login document to load.
                         with operation("browser.navigate"):
                             page.goto(login_url, wait_until="commit", timeout=30_000)
                     except PlaywrightError:
