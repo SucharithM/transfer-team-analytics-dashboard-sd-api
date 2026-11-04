@@ -73,8 +73,11 @@ def test_action_day_labels_match_nondefault_threshold_in_plot_and_hover():
     assert labels['young_active'] == 'Up to 8 Days · Active'
     assert labels['backlog_stale'] == 'Over 8 Days · Idle'
     annotations = [a.text for a in chart.layout.annotations]
-    assert any('Up to 8 Days · Active' in label for label in annotations)
-    assert any('Over 8 Days · Idle' in label for label in annotations)
+    assert any('8d backlog' in label for label in annotations)
+    from workflow_dashboard.dashboard_html import _age_idle_action_matrix_card
+    card = _age_idle_action_matrix_card('', analytics.chart_tables['age_idle_action_matrix'])
+    assert 'Up to 8 Days · Active' in card
+    assert 'Over 8 Days · Idle' in card
     for trace in chart.data:
         for row in trace.customdata:
             assert row[6] == labels[row[5]]

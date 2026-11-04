@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 
 from workflow_dashboard.analytics import (
@@ -197,7 +199,7 @@ def test_matrix_distinguishes_large_young_and_small_aged_queues() -> None:
         1,
         2,
     ]
-    assert chart.layout.height == 420
+    assert chart.layout.height == 315
     assert chart.layout.yaxis.autorange == "reversed"
     assert [annotation.text for annotation in chart.layout.annotations].count(
         "<b>37</b>"
@@ -216,4 +218,6 @@ def test_matrix_height_expands_for_unrecognized_workflow_steps() -> None:
 
     chart = _workflow_aging_matrix_chart(table)
 
-    assert chart.layout.height == 150 + 45 * (len(WORKFLOW_STEP_ORDER) + 5)
+    assert chart.layout.height == math.ceil(
+        (150 + 45 * (len(WORKFLOW_STEP_ORDER) + 5)) * 0.75
+    )

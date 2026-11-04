@@ -242,7 +242,7 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert "<strong>Sucharith Madhusoodana</strong>" in html_text
 
 
-def test_case_observations_sort_by_age_before_limiting_rows() -> None:
+def test_case_observations_include_all_rows_in_age_order() -> None:
     exceptions = pd.DataFrame(
         [
             {
@@ -265,9 +265,11 @@ def test_case_observations_sort_by_age_before_limiting_rows() -> None:
 
     assert table_html.index("<td>case-101</td>") < table_html.index("<td>case-100</td>")
     assert "<td>case-2</td>" in table_html
-    assert "<td>case-1</td>" not in table_html
-    assert "<td>case-0</td>" not in table_html
-    assert "<td>missing-age</td>" not in table_html
+    assert "<td>case-1</td>" in table_html
+    assert "<td>case-0</td>" in table_html
+    assert "<td>missing-age</td>" in table_html
+    assert table_html.count("<tr>") == len(exceptions) + 1
+    assert table_html.index("<td>case-0</td>") < table_html.index("<td>missing-age</td>")
 
 
 def test_workbook_contains_in_the_works_and_backlog_sheets(tmp_path) -> None:

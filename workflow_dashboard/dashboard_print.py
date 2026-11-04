@@ -52,6 +52,13 @@ PRINT_STYLES = """
       html, body { background: white; overflow: visible; }
       body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .dashboard-shell { max-width: none; padding: 0; }
+      .tabs-ready .dashboard-tabbar { display: none; }
+      .tabs-ready [data-tab-panel][hidden] { display: block !important; }
+      .dashboard-tabs { margin-top: 0; }
+      .tabs-ready .dashboard-tabs, .tabs-ready [data-tab-panel="sections"] { min-height: 0 !important; }
+      .tab-panels { height: auto !important; min-height: 0 !important; }
+      [data-tab-panel] { opacity: 1 !important; }
+      .dashboard-tabs [data-tab-panel] { scroll-margin-top: 0; }
       .dashboard-header, .legend-card, .kpi, .chart-container, .table-container {
         box-shadow: none; background: white; border-radius: 0;
       }
@@ -67,8 +74,8 @@ PRINT_STYLES = """
       .legend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .kpi { min-height: 0; break-inside: avoid; }
-      .current-open-grid, .trend-grid, .chart-stack { display: block; }
-      .chart-container { break-inside: avoid; margin: 0 0 5mm !important; padding: 4mm; }
+      .current-open-grid, .trend-grid, .chart-stack, .case-metrics-grid, .aging-grid { display: block; }
+      .dashboard-tabs .chart-container { break-inside: avoid; margin: 0 0 5mm !important; padding: 4mm; }
       .chart-container-wide .card-heading { position: static; }
       .chart-container-wide .js-plotly-plot { min-width: 0; max-width: 100%; }
       .pdf-prepared .chart-container .js-plotly-plot { display: none; }
@@ -77,12 +84,14 @@ PRINT_STYLES = """
         object-fit: contain; break-inside: avoid; break-before: avoid;
       }
       .chart-container, .table-container, .current-open-grid .chart-container-wide,
+      .aging-grid .chart-container-wide,
       .table-scroll, .action-drilldown-scroll {
         overflow: visible; max-height: none; min-width: 0;
       }
       .table-container, .action-matrix-card { break-inside: auto; }
       .action-matrix-coverage { break-after: avoid; }
-      .table-container { padding: 4mm; }
+      .dashboard-tabs .table-container { padding: 4mm; }
+      #problem-rows-table .table-scroll { max-height: none; overflow: visible; }
       .data-table, .evaluation-type-table, .action-drilldown-table {
         min-width: 0; width: 100%; table-layout: fixed;
         border-collapse: collapse; font-size: 9pt;
@@ -110,9 +119,18 @@ PRINT_STYLES = """
       thead { display: table-header-group; }
       tr { break-inside: avoid; }
       .table-card-header { break-after: avoid; }
-      .pdf-export, .help-control, .modebar, .hoverlayer, .action-matrix-controls,
+      .pdf-export, .help-control, .modebar, .hoverlayer,
       .action-drilldown-clear, .jump-to-top, .kpi-link { display: none !important; }
       .action-matrix-drilldown[hidden] { display: none; }
+      .donut-layout { grid-template-columns: 360px minmax(0, 1fr); gap: 16px; }
+      .donut-plot { width: 100%; }
+      .chart-category-list { break-inside: avoid; }
+      .category-toggle { color: #172033; font-size: 10pt; padding: 5px; }
+      .risk-plot-scroll { overflow: visible; }
+      .donut-plot > div, .risk-plot-scroll > div { height: auto !important; }
+      .risk-chart-frame { display: inline-block; width: 100%; break-inside: avoid; }
+      .risk-chart-frame .pdf-chart { max-height: 110mm; }
+      .action-matrix-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .page-footer { display: none; }
     }
 """
@@ -134,37 +152,9 @@ def export_script(json_for_script) -> str:
         const status = document.getElementById("pdf-export-status");
         const label = button.querySelector(".pdf-button-label");
         const exportControl = button.closest(".pdf-export");
-        const tooltipControl = button.closest(".pdf-export-control");
-        const hint = document.getElementById("pdf-export-hint");
         const messages = MESSAGES;
         let busy = false;
         let snapshots = [];
-
-        const positionHint = () => {
-          hint.style.left = "";
-          hint.style.right = "";
-          if (hint.getBoundingClientRect().left < 12) {
-            hint.style.left = "0";
-            hint.style.right = "auto";
-          }
-        };
-        tooltipControl.addEventListener("mouseenter", positionHint);
-        tooltipControl.addEventListener("focusin", positionHint);
-        window.addEventListener("resize", positionHint);
-
-        tooltipControl.addEventListener("keydown", event => {
-          if (event.key === "Escape") tooltipControl.classList.add("tooltip-dismissed");
-        });
-        tooltipControl.addEventListener("mouseleave", () => {
-          if (!tooltipControl.contains(document.activeElement)) {
-            tooltipControl.classList.remove("tooltip-dismissed");
-          }
-        });
-        tooltipControl.addEventListener("focusout", event => {
-          if (!tooltipControl.contains(event.relatedTarget) && !tooltipControl.matches(":hover")) {
-            tooltipControl.classList.remove("tooltip-dismissed");
-          }
-        });
 
         const restore = () => {
           document.body.classList.remove("pdf-prepared");
@@ -211,6 +201,9 @@ def export_script(json_for_script) -> str:
           status.classList.remove("is-error");
           status.textContent = messages.preparing;
           try {
+            const preparation = { pending: [] };
+            document.dispatchEvent(new CustomEvent('dashboard-prepare-print', { detail: preparation }));
+            await Promise.all(preparation.pending);
             const plots = Array.from(document.querySelectorAll(".chart-container .js-plotly-plot"));
             await waitForCharts(plots);
             await document.fonts.ready;
@@ -219,7 +212,7 @@ def export_script(json_for_script) -> str:
               image.className = "pdf-chart";
               image.alt = plot.closest(".chart-container").getAttribute("aria-label") || "";
               image.src = await Plotly.toImage(plot, {
-                format: "svg", width: 1000, height: plot._fullLayout.height,
+                format: "svg", width: plot.closest(".donut-plot") ? 420 : 1000, height: plot._fullLayout.height,
               });
               await image.decode();
               snapshots.push(image);
