@@ -13,6 +13,7 @@ python -m pytest -q
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed; no executable will be built.' }
 python -m workflow_dashboard.build_identity --output build/build_identity.json
 if ($LASTEXITCODE -ne 0) { throw 'Build identity generation failed.' }
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name WorkflowTransferDashboard --collect-all playwright --collect-all plotly --add-data 'workflow_dashboard/desktop_settings.toml;workflow_dashboard' --add-data 'build/build_identity.json;workflow_dashboard' desktop_launcher.py
+# Keep dependencies beside the executable instead of extracting them on every launch.
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name WorkflowTransferDashboard --collect-all playwright --collect-all plotly --add-data 'workflow_dashboard/desktop_settings.toml;workflow_dashboard' --add-data 'build/build_identity.json;workflow_dashboard' desktop_launcher.py
 if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
-Write-Host 'Built dist/WorkflowTransferDashboard.exe.'
+Write-Host 'Built dist/WorkflowTransferDashboard/WorkflowTransferDashboard.exe. Distribute the entire WorkflowTransferDashboard folder, including _internal.'

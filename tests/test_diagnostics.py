@@ -168,8 +168,11 @@ def test_runtime_metadata_has_only_approved_technical_fields(monkeypatch):
     assert_private_absent(metadata)
 
 
+@pytest.mark.parametrize("changed_file", [
+    "desktop.py", "dashboard_navigation.py", "dashboard_print.py", "dashboard_tooltips.py",
+])
 def test_build_identity_excludes_settings_and_data_and_loads_frozen_manifest(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, changed_file
 ):
     root = tmp_path / "workflow_dashboard"
     root.mkdir()
@@ -182,7 +185,7 @@ def test_build_identity_excludes_settings_and_data_and_loads_frozen_manifest(
     (root / ".env").write_text(TOKEN, encoding="utf-8")
     (root / "records.json").write_text(TOKEN, encoding="utf-8")
     assert logs.code_fingerprint() == first
-    (root / "desktop.py").write_text("changed code", encoding="utf-8")
+    (root / changed_file).write_text("changed code", encoding="utf-8")
     second = logs.code_fingerprint()
     assert second != first
     (root / "build_identity.json").write_text(

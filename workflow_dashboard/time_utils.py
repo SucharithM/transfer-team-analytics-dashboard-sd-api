@@ -39,12 +39,18 @@ def parse_source_time_series(series: pd.Series) -> pd.Series:
         if pd.isna(timestamp):
             return pd.NaT
         timestamp = pd.Timestamp(timestamp)
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.tz_localize(
-                DASHBOARD_TIMEZONE,
-                ambiguous=False,
-                nonexistent="shift_forward",
-            )
-        return timestamp.tz_convert("UTC")
+        try:
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.tz_localize(
+                    DASHBOARD_TIMEZONE,
+                    ambiguous=False,
+                    nonexistent="shift_forward",
+                )
+            timestamp = timestamp.tz_convert("UTC")
+            # Parsing alone can accept dates the report timezone cannot display.
+            timestamp.tz_convert(DASHBOARD_TIMEZONE).date()
+            return timestamp
+        except (ValueError, OverflowError, NotImplementedError):
+            return pd.NaT
 
     return pd.to_datetime(series.map(parse_value), errors="coerce", utc=True)

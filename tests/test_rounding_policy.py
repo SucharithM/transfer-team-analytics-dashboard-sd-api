@@ -160,7 +160,7 @@ def test_half_tie_median_round_trips_through_history(tmp_path) -> None:
         definition_hash=definition.definition_hash,
     )
 
-    assert definition.metric_definition_version == METRIC_DEFINITION_VERSION == 9
+    assert definition.metric_definition_version == METRIC_DEFINITION_VERSION == 11
     assert history.loc[history["run_id"] == run_id, "median_age_days"].iloc[
         0
     ] == pytest.approx(23.05)

@@ -62,6 +62,18 @@ def _clean_text(value: Any) -> str | None:
     return text
 
 
+def record_identity(record: dict[str, Any]) -> str | None:
+    """Select the same nonempty package ID for validation and exports."""
+    lowered = {str(key).casefold(): key for key in record}
+    for alias in FIELD_ALIASES["record_id"]:
+        actual = alias if alias in record else lowered.get(alias.casefold())
+        if actual is not None:
+            identity = _clean_text(record[actual])
+            if identity is not None:
+                return identity
+    return None
+
+
 class WorkflowPopulationError(RuntimeError):
     """Raised when a run cannot identify one unambiguous workflow population."""
 
@@ -163,16 +175,12 @@ def normalize_records(
         lowered = {key.lower(): key for key in record}
         for field, aliases in FIELD_ALIASES.items():
             row[field] = _clean_text(_first_present(record, aliases, lowered))
-        if row["record_id"] is None:
-            row["record_id"] = f"row-{index}"
+        row["record_id"] = record_identity(record) or f"row-{index}"
         row["is_terminal"] = (row["step_name"] or "").lower() in config.terminal_steps
         row["source_payload"] = json.dumps(record, ensure_ascii=False, sort_keys=True, default=str)
         normalized.append(row)
 
     df = pd.DataFrame(normalized, columns=[column for column in CANONICAL_COLUMNS if column not in {"age_days", "idle_days"}])
-    if df.empty:
-        return pd.DataFrame(columns=CANONICAL_COLUMNS)
-
     df["submitted_at"] = parse_source_time_series(df["submitted_at"])
     df["last_activity_at"] = parse_source_time_series(df["last_activity_at"])
     df["age_days"] = (generated_at - df["submitted_at"]).dt.total_seconds() / 86400

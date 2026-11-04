@@ -70,6 +70,7 @@ def test_content_catalog_covers_all_dashboard_components() -> None:
         "in_the_works",
         "backlog",
         "submitted_by_activity",
+        "aging_by_step",
         "daily_closures",
         "closed_by_month",
         "exceptions",

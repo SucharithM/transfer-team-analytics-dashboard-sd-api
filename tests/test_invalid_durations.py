@@ -214,6 +214,10 @@ def test_future_terminal_activity_is_not_counted_as_closed_today() -> None:
     assert analytics.snapshot_metrics["terminal_count"] == 1
     assert analytics.snapshot_metrics["reached_end_today_count"] == 0
     assert analytics.chart_tables["closed_by_month"].empty
+    summary = analytics.chart_tables["evaluation_type_summary"].iloc[0]
+    assert summary["completed_count"] == 1
+    assert summary["completion_valid_count"] == 0
+    assert pd.isna(summary["median_completion_days"])
     assert analytics.exceptions.iloc[0]["exception_reasons"] == (
         "Last activity after report generation"
     )

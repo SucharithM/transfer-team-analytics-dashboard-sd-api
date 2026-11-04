@@ -1,6 +1,8 @@
 import math
+import json
 
 import pandas as pd
+import pytest
 
 from workflow_dashboard.analytics import (
     ACTION_BUCKET_LABELS,
@@ -9,6 +11,7 @@ from workflow_dashboard.analytics import (
 from workflow_dashboard.config import DashboardConfig
 from workflow_dashboard.dashboard_html import (
     _age_idle_action_matrix_chart,
+    _age_idle_action_matrix_card,
     render_dashboard,
 )
 from workflow_dashboard.normalization import normalize_records
@@ -57,6 +60,24 @@ def _analytics(
         config=config or DashboardConfig(),
         generated_at=GENERATED_AT,
     )
+
+
+@pytest.mark.parametrize("age,idle,age_label,idle_label", [
+    (2.55, 1.25, "2.6", "1.3"),
+    (23.05, 2.25, "23.1", "2.3"),
+    (2.65, 0.0, "2.7", "0.0"),
+])
+def test_drilldown_uses_half_up_labels_and_retains_raw_sort_values(
+    age, idle, age_label, idle_label
+):
+    analytics = _analytics([_case("rounding", age_days=age, idle_days=idle)])
+    markup = _age_idle_action_matrix_card("", analytics.chart_tables["age_idle_action_matrix"])
+    payload = markup.split('id="age-idle-action-data">', 1)[1].split("</script>", 1)[0]
+    row = json.loads(payload)[0]
+    assert row["age_days"] == age
+    assert row["idle_days"] == idle
+    assert row["age_label"] == age_label
+    assert row["idle_label"] == idle_label
 
 
 def test_action_buckets_use_exact_configured_boundaries() -> None:

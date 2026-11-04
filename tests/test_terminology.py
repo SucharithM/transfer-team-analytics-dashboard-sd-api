@@ -69,7 +69,7 @@ def test_summary_copy_changes_without_renaming_audit_tabs_or_columns(tmp_path):
                     owner_history=pd.DataFrame(), output_path=path)
     workbook = load_workbook(path, read_only=True)
     assert workbook.sheetnames == ['Summary', 'Normalized Records', 'In The Works',
-                                  'Backlog', 'Submitted By Activity', 'Daily Closures',
+                                  'Backlog', 'Age By Step', 'Submitted By Activity', 'Daily Closures',
                                   'Closed By Month', 'Exceptions', 'History Trends',
                                   'Owner History', 'Completion History']
     assert workbook['Summary']['A5'].value == 'Open Cases'

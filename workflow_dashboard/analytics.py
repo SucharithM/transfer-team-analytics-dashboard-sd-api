@@ -430,6 +430,7 @@ def _evaluation_type(value: object) -> str:
 def _evaluation_type_summary(
     df: pd.DataFrame,
     *,
+    generated_at: pd.Timestamp,
     in_the_works: pd.DataFrame,
     backlog: pd.DataFrame,
     fully_processed: pd.DataFrame,
@@ -490,6 +491,9 @@ def _evaluation_type_summary(
     completed["_valid_completion"] = (
         completed["completion_days"].notna()
         & completed["completion_days"].ge(0)
+        & dashboard_time_series(completed["last_activity_at"]).le(
+            dashboard_timestamp(generated_at)
+        )
     )
     completed.loc[~completed["_valid_completion"], "completion_days"] = pd.NA
 
@@ -674,6 +678,8 @@ def _status_mix(df: pd.DataFrame) -> pd.DataFrame:
         if "is_terminal" in df.columns
         else pd.Series(False, index=df.index, dtype=bool)
     )
+    completed_status = status_values.astype("string").str.strip().str.casefold().eq("completed")
+    status_values.loc[~terminal & completed_status] = "Completed status (still open)"
     status_values.loc[terminal] = "Completed"
     status_frame = pd.DataFrame({"status": status_values}, index=df.index)
     return _ranked_count(
@@ -1168,6 +1174,7 @@ def build_analytics(
         "status_mix": _status_mix(df),
         "evaluation_type_summary": _evaluation_type_summary(
             df,
+            generated_at=generated_at,
             in_the_works=in_the_works,
             backlog=backlog,
             fully_processed=fully_processed,

@@ -10,7 +10,7 @@ from typing import Any
 import requests
 
 from .config import DashboardConfig, is_secure_api_url
-from .normalization import FIELD_ALIASES
+from .normalization import record_identity
 from .diagnostics import emit, operation
 
 
@@ -118,7 +118,9 @@ def extract_page_payload(raw: Any) -> PagePayload:
             )
         if isinstance(value, dict):
             nested = extract_page_payload(value)
-            if nested.schema_recognized:
+            if nested.schema_recognized and (
+                total is None or nested.total is None or total == nested.total
+            ):
                 nested_total = total if total is not None else nested.total
                 return PagePayload(
                     records=nested.records,
@@ -212,18 +214,8 @@ class WorkflowApiClient:
     def _record_id(record: dict[str, Any]) -> str | None:
         """Return a normalized package identity using the canonical ID aliases."""
 
-        lowered = {str(key).casefold(): key for key in record}
-        for alias in FIELD_ALIASES["record_id"]:
-            actual = alias if alias in record else lowered.get(alias.casefold())
-            if actual is None:
-                continue
-            value = record[actual]
-            if value is None:
-                continue
-            identity = str(value).strip()
-            if identity:
-                return identity.casefold()
-        return None
+        identity = record_identity(record)
+        return identity.casefold() if identity is not None else None
 
     @classmethod
     def _validate_page_payload(

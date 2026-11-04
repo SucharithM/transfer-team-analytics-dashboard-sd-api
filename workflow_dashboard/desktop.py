@@ -12,7 +12,6 @@ from dataclasses import replace
 from enum import Enum
 from pathlib import Path
 
-from .browser_auth import BrowserAuthError, browser_fetch
 from .config import DashboardConfig, is_secure_api_url
 from .desktop_preferences import (
     initial_output_directory,
@@ -20,8 +19,6 @@ from .desktop_preferences import (
     save_output_directory,
     validate_output_directory,
 )
-from .generation import generate_dashboard
-from .normalization import WorkflowPopulationError
 from .diagnostics import DiagnosticSession, capture, emit, operation
 from .diagnostics_ui import open_preview
 
@@ -78,11 +75,15 @@ def fetch_and_generate(config, *, channel="msedge", cancel=None, progress=None, 
 
 def _fetch_and_generate(config, *, channel, cancel, progress):
     """Rendering cannot start until browser_fetch has reaped its credential worker."""
+    from .browser_auth import BrowserAuthError, browser_fetch
+
     fetched = browser_fetch(config, channel=channel, cancel=cancel, progress=progress)
     if cancel is not None and cancel.is_set():
         raise BrowserAuthError("cancelled")
     if progress is not None:
         progress("generating")
+    from .generation import generate_dashboard
+
     return generate_dashboard(replace(config, api_token=None), fetched["records"], fetched["fetch"], source="api")
 
 
@@ -351,6 +352,9 @@ class DesktopApp:
                 self.events.put((run_id, 'error', 'A dashboard operation failed. Use Send Error Logs to copy technical diagnostics.'))
 
     def _work(self, run_id, selection, cancel, rendering):
+        from .browser_auth import BrowserAuthError
+        from .normalization import WorkflowPopulationError
+
         def send(kind, value):
             if kind in ('done', 'error', 'cancelled'):
                 self.diagnostics.finish(run_id, {'done': 'success', 'error': 'failed', 'cancelled': 'cancelled'}[kind])
