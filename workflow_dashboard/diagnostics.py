@@ -66,6 +66,7 @@ CODE_FILES = ('__init__.py', 'diagnostics.py', 'diagnostics_ui.py', 'build_ident
     'desktop.py', 'desktop_preferences.py', 'browser_auth.py', 'process_guard.py',
     'api_client.py', 'generation.py', 'config.py', 'normalization.py', 'analytics.py',
     'history.py', 'dashboard_html.py', 'dashboard_content.py', 'excel_export.py',
+    'dashboard_navigation.py', 'dashboard_print.py', 'dashboard_tooltips.py',
     'number_format.py', 'time_utils.py', '__main__.py')
 _current = ContextVar('safe_diagnostic_emitter', default=None)
 

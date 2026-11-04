@@ -319,7 +319,7 @@ def _donut_chart(
         center_text if center_text is not None else f"{int(values.sum()):,}"
     )
     value_template = (
-        f"%{{value:.1f}}{value_suffix}"
+        "%{text}"
         if one_decimal
         else f"%{{value:,}}{value_suffix}"
     )
@@ -342,6 +342,10 @@ def _donut_chart(
         go.Pie(
             labels=wrapped_labels,
             values=values,
+            text=(
+                [format_one_decimal(value, suffix=value_suffix, missing="—") for value in ordered[value_col]]
+                if one_decimal else None
+            ),
             customdata=raw_labels,
             hole=0.58,
             sort=False,
@@ -1503,6 +1507,8 @@ def _age_idle_action_matrix_card(
             "step_name": str(row["step_name"]),
             "age_days": float(row["age_days"]),
             "idle_days": float(row["idle_days"]),
+            "age_label": format_one_decimal(row["age_days"]),
+            "idle_label": format_one_decimal(row["idle_days"]),
             "last_activity_at": last_activity_label,
             "action_bucket": str(row["action_bucket"]),
         }
@@ -1603,8 +1609,8 @@ def _age_idle_action_matrix_card(
                 const row = document.createElement("tr");
                 appendCell(row, record.record_id);
                 appendCell(row, record.step_name);
-                appendCell(row, `${{record.age_days.toFixed(1)}} days`);
-                appendCell(row, `${{record.idle_days.toFixed(1)}} days`);
+                appendCell(row, `${{record.age_label}} days`);
+                appendCell(row, `${{record.idle_label}} days`);
                 appendCell(row, record.last_activity_at);
                 body.appendChild(row);
               }});
@@ -1909,9 +1915,23 @@ def render_dashboard(
     .dashboard-header h1 {{ margin-top: 10px; }}
     .header-top .eyebrow {{ margin-bottom: 0; }}
     .dashboard-header .generated-at {{
-      font-size: 13px;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
       line-height: 1.4;
       margin: 0;
+      padding-left: 18px;
+      position: relative;
+    }}
+    .generated-at::before {{
+      background: var(--primary);
+      border-radius: 50%;
+      content: "";
+      height: 8px;
+      left: 0;
+      position: absolute;
+      top: 0.45em;
+      width: 8px;
     }}
     .dashboard-header .authorship-credit {{
       color: var(--muted);

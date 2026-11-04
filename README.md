@@ -194,10 +194,17 @@ needs installed Edge but does not need Python or a console. Build from a Windows
 .\packaging\build_windows.ps1
 ```
 
-The script installs build dependencies, runs the test suite, and builds
-`dist/WorkflowTransferDashboard.exe` as a single-file windowed executable. It bundles
-the Playwright driver, Plotly assets, and nonsecret desktop defaults. It does not
-bundle `.env`, records, generated outputs, or history. The multiprocessing entry
+The script installs build dependencies, runs the test suite, and builds the windowed
+executable `dist/WorkflowTransferDashboard/WorkflowTransferDashboard.exe`. Distribute
+the entire `dist/WorkflowTransferDashboard` folder, including `_internal`; zip it for
+sharing and extract the whole folder to a local drive before launching. The executable
+cannot run on its own. This folder bundle avoids extracting dependencies to a temporary
+directory on every launch, as the previous single-file build did. Browser and reporting
+libraries load in the generation worker thread when needed, keeping them out of window
+startup. The first generation still pays their import cost; later runs reuse them.
+
+The bundle includes the Playwright driver, Plotly assets, and nonsecret desktop defaults.
+It does not bundle `.env`, records, generated outputs, or history. The multiprocessing entry
 point calls `freeze_support()` before importing the GUI, avoiding recursive
 frozen-app launches. A Windows executable cannot be built or validated on a
 Mac.
@@ -236,6 +243,10 @@ releases do not split trends by themselves. Any code change that alters a
 population or metric formula must increment `METRIC_DEFINITION_VERSION` in
 `workflow_dashboard/history.py`.
 
+Metric definition version 11 matches workflow names case-insensitively in history
+and starts a new compatible trend series. Older snapshots remain retained for audit.
+Future last-activity timestamps remain excluded from evaluation-type completion medians.
+
 History schemas are intentionally not migrated while the product is under
 development. Archive or remove a database created by an earlier schema before
 running the new version; incompatible databases are rejected without mutation.
@@ -271,7 +282,8 @@ the card shows `—` with a compact warning such as
 
 The age-by-step chart applies the age-completeness threshold independently to every step
 and keeps under-covered steps visible with an unavailable median. Per-step
-valid/total samples remain available in the audit workbook. The wait and idle
+valid/total samples are available in the audit workbook's **Age By Step** sheet,
+alongside each step's median (blank when unavailable). The wait and idle
 thresholds can be set from 0 through 1 with `WORKFLOW_MIN_WAIT_COMPLETENESS`
 and `WORKFLOW_MIN_IDLE_COMPLETENESS`.
 
@@ -289,8 +301,8 @@ backlog, aged-case, and stale thresholds, currently seven, fourteen, and three
 days. Quadrant counts distinguish young/recent, young/stale, backlog/recent,
 and backlog/stale work. The axes use a square-root transformation so long-tail
 cases remain visible without compressing the action thresholds; ticks,
-tooltips, and drilldown values remain labeled in actual days. The executive
-view contains no student names. Selecting a quadrant or point reveals only
+tooltips, and drilldown values remain labeled in actual days. The plot and
+its drilldown contain no student names. Selecting a quadrant or point reveals only
 Package ID, workflow step, case age, idle time, and the exact last-activity timestamp
 in Eastern time. Packages with missing or invalid timing remain in open
 inventory but are excluded from the plot and disclosed in its coverage line.
@@ -306,10 +318,12 @@ to the workbook for audit.
 ## Evaluation-type summary
 
 The package label is expected to contain three pipe-delimited values:
-`evaluation type | person | institution`. Dashboard analytics use only the
+`evaluation type | person | institution`. The evaluation-type summary uses only the
 first value, with a trailing `Transcript Evaluation` suffix removed. Labels
 that do not contain three nonempty values are retained as `Unclassified`;
-person and institution are not added to the summary table or dashboard HTML.
+person and institution are not added to the summary table. Case Observations
+intentionally retains the complete package label, including student names and
+institutions, in the dashboard HTML and printed/PDF reports.
 The normalized CSV retains the package label, except that spreadsheet formula prefixes are escaped for safe spreadsheet import. The workbook stores source strings as literal text.
 
 The Evaluation Cases by Evaluation Type table reports total, Open Cases, and Completed
@@ -322,7 +336,7 @@ unavailable rates or medians.
 Median Open Age uses report time minus case `submissionDate` for
 non-End packages with valid non-negative ages. Median Completion Time uses
 `lastActivityDate - submissionDate` for End-step packages with valid
-non-negative intervals. This estimates elapsed time from case submission to completion; later updates may affect the estimate. The existing wait and completion completeness thresholds are
+non-negative intervals ending no later than report time. This estimates elapsed time from case submission to completion; later updates may affect the estimate. The existing wait and completion completeness thresholds are
 applied independently within each evaluation type. Below a threshold, the
 affected median is suppressed; validity counts remain internal and are not
 displayed in the dashboard table.

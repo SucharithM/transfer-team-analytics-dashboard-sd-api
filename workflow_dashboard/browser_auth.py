@@ -6,6 +6,7 @@ import json
 import multiprocessing as mp
 import os
 import time
+from collections import deque
 from dataclasses import replace
 from typing import Callable
 from urllib.parse import urlsplit
@@ -105,6 +106,7 @@ def _fetch_with_browser(
     except ImportError:
         raise BrowserAuthError("dependency") from None
     token = None
+    pending_requests = deque()
     client = None
     context_closed = False
     disconnected = False
@@ -168,11 +170,10 @@ def _fetch_with_browser(
                 try:
 
                     def observe(request):
-                        nonlocal token
-                        if token is None:
-                            token = bearer_from_request(request, api_url=config.api_url)
-                            if token is not None:
-                                emit_callback("credential.observed")
+                        if request.method == "GET" and is_packages_request(
+                            request.url, api_url=config.api_url
+                        ):
+                            pending_requests.append(request)
 
                     context.on("request", observe)
                     context.on("close", on_context_close)
@@ -212,9 +213,17 @@ def _fetch_with_browser(
                                     reason = "no_pages"
                                     raise BrowserAuthError("closed")
                             try:
+                                if pending_requests:
+                                    # Header reads can yield; keep them outside event callbacks.
+                                    token = bearer_from_request(
+                                        pending_requests.popleft(), api_url=config.api_url
+                                    )
+                                    if token is not None:
+                                        emit_callback("credential.observed")
+                                    continue
                                 with context.expect_event(
                                     "request",
-                                    predicate=lambda request: token is not None,
+                                    predicate=lambda request: bool(pending_requests),
                                     timeout=min(100, (wait_deadline - now) * 1000),
                                 ):
                                     pass

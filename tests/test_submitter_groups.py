@@ -54,7 +54,7 @@ def test_new_staff_definition_round_trips_groups_without_mixing_old_series(tmp_p
     config = DashboardConfig()
     analytics = build_analytics(df, config=config, generated_at=GENERATED_AT)
     definition = build_metric_definition(config, df, source='fixture')
-    assert definition.metric_definition_version == 9
+    assert definition.metric_definition_version == 11
     assert 'roster_plus_others_and_not_recorded' in definition.definition_json
     db = tmp_path / 'history.sqlite'
     store_snapshot(db, analytics, definition, source='fixture')

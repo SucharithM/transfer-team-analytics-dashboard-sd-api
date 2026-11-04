@@ -604,6 +604,7 @@ WORKBOOK = WorkbookContent(
             "normalized_records": "Normalized Records",
             "in_the_works": "In The Works",
             "backlog": "Backlog",
+            "aging_by_step": "Age By Step",
             "submitted_by_activity": "Submitted By Activity",
             "daily_closures": "Daily Closures",
             "closed_by_month": "Closed By Month",

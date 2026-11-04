@@ -20,7 +20,7 @@ from playwright.sync_api import (
 )
 
 from workflow_dashboard import browser_auth as auth
-from workflow_dashboard import desktop
+from workflow_dashboard import desktop, generation
 from workflow_dashboard.api_client import PaginationIntegrityError, WorkflowApiClient
 from workflow_dashboard.config import DashboardConfig, DEFAULT_API_URL, load_config
 from workflow_dashboard.generation import generate_dashboard
@@ -211,19 +211,7 @@ def install_fake_browser(
         "Sign-in wait must not depend on a particular page"
     )
 
-    page.wait_for_timeout = lambda milliseconds: pytest.fail(
-        "Sign-in wait must not depend on a particular page"
-    )
-
     def close_browser():
-        lifecycle.append("browser_closed")
-        browser.emit("disconnected")
-
-    browser = emitter(
-        new_context=lambda **kwargs: context,
-        close=close_browser,
-        is_connected=lambda: True,
-    )
         lifecycle.append("browser_closed")
         browser.emit("disconnected")
 
@@ -257,18 +245,43 @@ def install_fake_browser(
             TimeoutError=PlaywrightTimeoutError,
         ),
     )
-            lifecycle.append("driver_stopped")
-
-    monkeypatch.setitem(
-        sys.modules,
-        "playwright.sync_api",
-        SimpleNamespace(
-            sync_playwright=Manager,
-            Error=PlaywrightError,
-            TimeoutError=PlaywrightTimeoutError,
-        ),
-    )
     return lifecycle
+
+
+@pytest.mark.parametrize("during_navigation", [True, False])
+def test_request_headers_are_read_outside_event_callbacks(monkeypatch, during_navigation):
+    from greenlet import getcurrent
+
+    caller = getcurrent()
+    read_bearer = auth.bearer_from_request
+
+    def read_headers(request, **kwargs):
+        assert getcurrent() is caller, "Header reads must not suspend an event callback"
+        return read_bearer(request, **kwargs)
+
+    def authenticated_request(context, observe):
+        event = request(header=f"Bearer {TOKEN}")
+        observe(event)
+        return event
+
+    lifecycle = install_fake_browser(
+        monkeypatch,
+        capture=during_navigation,
+        events=[authenticated_request],
+        event_greenlets=True,
+    )
+    monkeypatch.setattr(auth, "bearer_from_request", read_headers)
+
+    def fetch(self):
+        assert lifecycle == ["context_closed", "browser_closed", "driver_stopped"]
+        return [], {"pagination_validated": True}
+
+    monkeypatch.setattr(WorkflowApiClient, "fetch_all_records", fetch)
+    result = auth._fetch_with_browser(
+        DashboardConfig(), lambda _: None, threading.Event(),
+        channel="chrome", inspect_only=False, sign_in_timeout=600,
+    )
+    assert result["fetch"]["pagination_validated"]
 
 
 def test_browser_closes_before_fetch_and_credentials_never_leave_worker(monkeypatch):
@@ -583,9 +596,9 @@ def test_no_publication_when_fetch_fails(monkeypatch, tmp_path):
     def fail(*args, **kwargs):
         raise auth.BrowserAuthError("expired")
 
-    monkeypatch.setattr(desktop, "browser_fetch", fail)
+    monkeypatch.setattr(auth, "browser_fetch", fail)
     monkeypatch.setattr(
-        desktop,
+        generation,
         "generate_dashboard",
         lambda *args, **kwargs: pytest.fail("rendering started"),
     )
@@ -763,8 +776,8 @@ def test_render_follows_completed_fetch_and_cancel_does_not_render(monkeypatch):
         assert events == ["worker_reaped", "generating"]
         return {"outputs": {}}
 
-    monkeypatch.setattr(desktop, "browser_fetch", fetch)
-    monkeypatch.setattr(desktop, "generate_dashboard", render)
+    monkeypatch.setattr(auth, "browser_fetch", fetch)
+    monkeypatch.setattr(generation, "generate_dashboard", render)
     desktop.fetch_and_generate(config, progress=events.append)
     events.clear()
     cancelled = threading.Event()

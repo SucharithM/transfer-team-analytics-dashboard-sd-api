@@ -48,6 +48,27 @@ def _sample_definition():
     )
 
 
+def test_empty_api_population_exports_all_files_and_zero_history(tmp_path):
+    config = DashboardConfig(output_dir=tmp_path / "outputs",
+                             history_db_path=tmp_path / "history.sqlite")
+    result = generation.generate_dashboard(
+        config, [], {"pagination_validated": True}, source="api",
+        generated_at=pd.Timestamp("2026-11-03T17:00:00Z"),
+    )
+    assert result["records"] == 0
+    assert pd.read_csv(result["outputs"]["csv"]).empty
+    assert "Open Cases" in Path(result["outputs"]["html"]).read_text()
+    workbook = load_workbook(result["outputs"]["excel"], read_only=True)
+    try:
+        assert len(list(workbook["Normalized Records"].values)) == 1
+    finally:
+        workbook.close()
+    with sqlite3.connect(config.history_db_path) as connection:
+        assert connection.execute(
+            "SELECT total_records, in_the_works_count FROM snapshot_metrics"
+        ).fetchall() == [(0, 0)]
+
+
 def test_output_directory_failure_writes_no_history(tmp_path, capsys) -> None:
     output_file = tmp_path / "output-is-a-file"
     output_file.write_text("not a directory", encoding="utf-8")
@@ -275,5 +296,5 @@ def test_filtered_population_reaches_every_artifact_and_history(
         "source": "fixture",
         "source_identity": str(args.fixture_path.resolve()),
         "workflow_filter": "workflow a",
-        "workflow_names": ["Workflow A"],
+        "workflow_names": ["workflow a"],
     }

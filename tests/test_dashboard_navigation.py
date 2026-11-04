@@ -4,9 +4,12 @@ import os
 from pathlib import Path
 
 import pytest
+import pandas as pd
 from playwright.sync_api import expect
 
 from workflow_dashboard import dashboard_content as content
+from workflow_dashboard.dashboard_html import render_dashboard
+from .test_age_idle_action_matrix import _case, _analytics
 
 # Reuse the existing opt-in Chrome/Edge setup and synthetic report generator.
 from .test_dashboard_pdf import _open, _report, browser, page  # noqa: F401
@@ -83,6 +86,35 @@ def test_deep_links_history_and_view_list(page, tmp_path):
     expect(page.locator('#exceptions-panel')).to_be_visible()
     expect(page.locator('#problem-rows-table')).to_be_focused()
     assert page.evaluate('location.hash') == '#problem-rows-table'
+
+
+def test_age_donut_rounding_matches_legend_and_kpi(page, tmp_path):
+    cases = pd.DataFrame([_case("rounding", age_days=23.15, idle_days=1.25)])
+    analytics = _analytics(cases.to_dict("records"))
+    path = render_dashboard(df=cases, analytics=analytics, history=pd.DataFrame(),
+                            owner_history=pd.DataFrame(), output_path=tmp_path / "rounding.html")
+    _open(page, path)
+    page.locator('#tab-aging-panel').click()
+    expect(page.locator('#plot-aging-by-step .slicetext').first).to_have_text('23.2d')
+    expect(page.locator('[aria-controls="plot-aging-by-step"] strong')).to_have_text('23.2d')
+    assert next(k.value for k in analytics.kpis if k.key == "typical_wait_time") == "23.2d"
+
+
+def test_drilldown_rounding_matches_chart_and_kpi(page, tmp_path):
+    cases = pd.DataFrame([_case("rounding", age_days=2.55, idle_days=1.25)])
+    analytics = _analytics(cases.to_dict("records"))
+    path = render_dashboard(df=cases, analytics=analytics, history=pd.DataFrame(),
+                            owner_history=pd.DataFrame(), output_path=tmp_path / "rounding.html")
+    _open(page, path)
+    assert next(k.value for k in analytics.kpis if k.key == "typical_wait_time") == "2.6d"
+    page.locator('#tab-risk-panel').click()
+    page.locator('[data-action-bucket="young_active"]').click()
+    cells = page.locator('#age-idle-action-rows td')
+    expect(cells.nth(2)).to_have_text("2.6 days")
+    expect(cells.nth(3)).to_have_text("1.3 days")
+    assert page.locator('#plot-age-idle-action-matrix').evaluate(
+        'plot => plot.data[0].customdata[0][2]'
+    ) == "2.6"
 
 
 @pytest.mark.parametrize('width', [1440, 1280, 1024, 720, 390])

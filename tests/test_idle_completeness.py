@@ -217,7 +217,7 @@ def test_threshold_changes_metric_definition() -> None:
     )
 
     assert baseline.definition_hash != changed.definition_hash
-    assert baseline.metric_definition_version == METRIC_DEFINITION_VERSION == 9
+    assert baseline.metric_definition_version == METRIC_DEFINITION_VERSION == 11
 
 
 def test_idle_coverage_round_trips_through_history(tmp_path) -> None:

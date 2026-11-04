@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from workflow_dashboard.analytics import build_analytics
 from workflow_dashboard.config import DashboardConfig
@@ -184,6 +185,22 @@ def test_status_chart_combines_open_statuses_with_completed_end_step_cases() -> 
         "In Progress": 3,
     }
     assert status_mix.sum() == analytics.snapshot_metrics["total_records"]
+
+
+@pytest.mark.parametrize("source_status", ["Completed", "completed", " COMPLETED "])
+def test_status_chart_reserves_completed_for_end_step_cases(source_status) -> None:
+    cases = sample_cases()
+    cases.loc[cases["record_id"] == "old-team", "status"] = source_status
+    analytics = build_analytics(
+        cases, config=DashboardConfig(), generated_at=GENERATED_AT
+    )
+    status_mix = analytics.chart_tables["status_mix"].set_index("status")["count"]
+
+    assert status_mix["Completed"] == analytics.snapshot_metrics["fully_processed_count"] == 1
+    assert status_mix["Completed status (still open)"] == 1
+    assert status_mix.sum() == len(cases)
+    assert analytics.in_the_works.set_index("record_id").loc["old-team", "status"] == source_status
+    assert cases.set_index("record_id").loc["old-team", "status"] == source_status
 
 
 def test_status_chart_keeps_completed_when_categories_are_aggregated() -> None:

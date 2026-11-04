@@ -242,7 +242,7 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert "<strong>Sucharith Madhusoodana</strong>" in html_text
 
 
-def test_case_observations_include_all_rows_in_age_order() -> None:
+def test_case_observations_retain_package_labels_and_all_rows_in_age_order() -> None:
     exceptions = pd.DataFrame(
         [
             {
@@ -261,8 +261,11 @@ def test_case_observations_include_all_rows_in_age_order() -> None:
         ]
     )
 
+    package_label = "No-Rule Transcript Evaluation | Demo Student 001 | Example Institution"
+    exceptions.loc[0, "item_label"] = package_label
     table_html = _table_html(exceptions)
 
+    assert f"<td>{package_label}</td>" in table_html
     assert table_html.index("<td>case-101</td>") < table_html.index("<td>case-100</td>")
     assert "<td>case-2</td>" in table_html
     assert "<td>case-1</td>" in table_html
@@ -294,6 +297,15 @@ def test_workbook_contains_in_the_works_and_backlog_sheets(tmp_path) -> None:
     assert "Owner History" in workbook.sheetnames
     assert "Current Backlog" not in workbook.sheetnames
     assert workbook["Owner History"].max_row > 1
+    rows = list(workbook["Age By Step"].values)
+    steps = {row[0]: dict(zip(rows[0], row)) for row in rows[1:]}
+    assert steps["Review"]["age_valid_count"] == 3
+    assert steps["Review"]["age_total_count"] == 4
+    assert steps["Review"]["age_days"] is None
+    assert steps["Faculty Review"]["age_valid_count"] == 1
+    assert steps["Faculty Review"]["age_total_count"] == 1
+    assert steps["Faculty Review"]["age_days"] == 8.0
+    workbook.close()
 
 
 def test_workbook_leaves_partial_rolling_windows_blank(tmp_path) -> None:

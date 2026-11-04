@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from workflow_dashboard import desktop
+from workflow_dashboard import browser_auth, desktop
 from workflow_dashboard.browser_auth import BrowserAuthError
 from workflow_dashboard.config import DashboardConfig
 from workflow_dashboard.desktop import DesktopState
@@ -355,7 +355,7 @@ def test_missing_fixed_workflow_publishes_nothing_and_never_offers_choices(monke
     def fetch(*args, **kwargs):
         calls.append("fetch")
         return fetched
-    monkeypatch.setattr(desktop, "browser_fetch", fetch)
+    monkeypatch.setattr(browser_auth, "browser_fetch", fetch)
     harness.selections.extend([str(harness.chosen), str(harness.chosen)])
     for _ in range(2):
         app.generate()

@@ -25,7 +25,7 @@ from .time_utils import (
 
 
 HISTORY_SCHEMA_VERSION = 4
-METRIC_DEFINITION_VERSION = 9
+METRIC_DEFINITION_VERSION = 11
 
 SNAPSHOT_COLUMNS = [
     "run_id",
@@ -116,7 +116,7 @@ def _workflow_population(normalized_records: pd.DataFrame) -> tuple[list[str], b
             continue
         name = str(value).strip()
         if name:
-            workflow_names.add(name)
+            workflow_names.add(name.casefold())
         else:
             includes_unnamed = True
     return sorted(workflow_names), includes_unnamed
