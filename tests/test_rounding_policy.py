@@ -140,7 +140,7 @@ def test_high_cardinality_bar_uses_dynamic_height() -> None:
     )
 
     assert len(bar.data[0].y) == 15
-    assert bar.layout.height == 520
+    assert bar.layout.height == 390
 
 
 def test_half_tie_median_round_trips_through_history(tmp_path) -> None:

@@ -350,7 +350,8 @@ CHART_CONTENT: Mapping[ChartKey, ChartContent] = MappingProxyType(
             help_text=(
                 "The median age since submission of open cases grouped by their current workflow step. Time without "
                 "activity is included. Steps with older cases appear first; a "
-                "dash means there are not enough usable dates."
+                "dash means there are not enough usable dates. Slices represent individual step medians, "
+                "not shares of total case age. The center shows the overall median."
             ),
         ),
         "workflow_aging_matrix": ChartContent(
@@ -561,7 +562,7 @@ EVALUATION_TYPE_TABLE = EvaluationTypeTableContent(
 OBSERVATION_TABLE = ObservationTableContent(
     title="Case Observations",
     help_text=(
-        "Up to 100 cases that may need attention because of long waits, inactivity, "
+        "Cases that may need attention because of long waits, inactivity, "
         "or missing or inconsistent information. Completed cases may appear if their information needs review."
     ),
     empty_message="No case observations were identified for this run.",

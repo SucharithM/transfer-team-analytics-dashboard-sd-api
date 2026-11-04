@@ -164,8 +164,6 @@ def _fetch_with_browser(
             try:
                 browser.on("disconnected", on_disconnect)
                 with operation("browser.context"):
-                browser.on("disconnected", on_disconnect)
-                with operation("browser.context"):
                     context = browser.new_context(accept_downloads=False)
                 try:
 

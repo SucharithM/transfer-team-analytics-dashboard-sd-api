@@ -14,6 +14,8 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 
 from . import dashboard_content as content
+from .dashboard_navigation import NAVIGATION_SCRIPT, NAVIGATION_STYLES, tab_bar
+from .dashboard_tooltips import TOOLTIP_SCRIPT, TOOLTIP_STYLES
 from .dashboard_print import PRINT_STYLES, export_script
 from .analytics import (
     AGING_BAND_LABELS,
@@ -162,8 +164,8 @@ def _empty_figure(title: str) -> go.Figure:
         ],
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
-        height=320,
-        margin=dict(l=32, r=20, t=20, b=34),
+        height=240,
+        margin=dict(l=32, r=20, t=15, b=26),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=SURFACE_MUTED,
     )
@@ -180,8 +182,8 @@ def _base_layout(fig: go.Figure, title: str, *, height: int = 340) -> go.Figure:
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=SURFACE_MUTED,
-        margin=dict(l=150, r=42, t=20, b=58),
-        height=height,
+        margin=dict(l=150, r=42, t=15, b=44),
+        height=math.ceil(height * 0.75),
         hoverlabel=dict(
             bgcolor=TEXT, bordercolor=TEXT, font=dict(color="#ffffff", size=12)
         ),
@@ -328,9 +330,8 @@ def _donut_chart(
     if show_percent:
         hovertemplate += "<br>" + content.CHART_LABELS.share + ": %{percent:.1%}"
     hovertemplate += "<extra></extra>"
-    extra_categories = max(0, len(ordered) - 3)
-    height = 380 + 24 * extra_categories
-    bottom_margin = 92 + 24 * extra_categories
+    height = 380
+    bottom_margin = 10
     colors = _category_colors(
         raw_labels,
         color_dimension,
@@ -358,20 +359,26 @@ def _donut_chart(
     )
     _base_layout(fig, title, height=height)
     fig.update_layout(
-        margin=dict(l=24, r=24, t=20, b=bottom_margin),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.08,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=12, color=MUTED),
-        ),
+        margin=dict(l=24, r=24, t=15, b=bottom_margin),
+        height=height,
+        showlegend=False,
+        meta={
+            "category_values": [
+                "—" if pd.isna(value) else (
+                    format_one_decimal(value, suffix=value_suffix)
+                    if one_decimal else f"{int(value):,}"
+                )
+                for value in pd.to_numeric(ordered[value_col], errors="coerce")
+            ],
+            "show_percent": show_percent,
+        },
         uniformtext=dict(minsize=11, mode="hide"),
         annotations=[
             dict(
-                text=f"<b>{displayed_center}</b>",
+                text=f"<b>{displayed_center}</b>" + (
+                    "<br><span style='font-size:13px'>Overall median</span>"
+                    if one_decimal else ""
+                ),
                 x=0.5,
                 y=0.5,
                 xref="paper",
@@ -482,7 +489,7 @@ def _line_chart(
         )
     )
     _base_layout(fig, title, height=310)
-    fig.update_layout(margin=dict(l=72, r=36, t=20, b=58))
+    fig.update_layout(margin=dict(l=72, r=36, t=15, b=44))
     fig.update_xaxes(title=content.CHART_LABELS.date)
     if len(history) == 1:
         day = local_run_times.dt.tz_localize(None).dt.normalize().iloc[0]
@@ -573,7 +580,7 @@ def _daily_closures_chart(table: pd.DataFrame) -> go.Figure:
     )
     _base_layout(fig, title, height=380)
     fig.update_layout(
-        margin=dict(l=72, r=36, t=70, b=76),
+        margin=dict(l=72, r=36, t=53, b=57),
         bargap=0.15,
         legend=dict(y=1.08, yanchor="bottom"),
     )
@@ -636,7 +643,7 @@ def _recent_closures_chart(
     )
     _base_layout(fig, chart_copy.title, height=330)
     fig.update_layout(
-        margin=dict(l=72, r=36, t=20, b=58),
+        margin=dict(l=72, r=36, t=15, b=44),
         showlegend=False,
     )
     fig.update_xaxes(title=content.CHART_LABELS.date)
@@ -712,7 +719,7 @@ def _closed_by_month_trend(table: pd.DataFrame) -> go.Figure:
     )
     _base_layout(fig, title, height=330)
     fig.update_layout(
-        margin=dict(l=72, r=36, t=20, b=76),
+        margin=dict(l=72, r=36, t=15, b=57),
         showlegend=False,
     )
     fig.update_xaxes(
@@ -892,7 +899,7 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
     height = max(400, 150 + 45 * len(steps))
     _base_layout(fig, title, height=height)
     fig.update_layout(
-        margin=dict(l=250, r=92, t=54, b=34),
+        margin=dict(l=250, r=92, t=41, b=26),
         showlegend=False,
     )
     fig.update_xaxes(
@@ -1098,26 +1105,6 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
             layer="above",
         )
 
-    counts = table["action_bucket"].value_counts().to_dict()
-    annotation_positions = {
-        "young_active": (backlog_x / 2, stale_y / 2),
-        "young_stale": (backlog_x / 2, stale_y + (y_max - stale_y) / 2),
-        "backlog_active": (backlog_x + (x_max - backlog_x) / 2, stale_y / 2),
-        "backlog_stale": (
-            backlog_x + (x_max - backlog_x) / 2,
-            stale_y + (y_max - stale_y) / 2,
-        ),
-    }
-    for bucket in bucket_labels:
-        x_position, y_position = annotation_positions[bucket]
-        fig.add_annotation(
-            x=x_position,
-            y=y_position,
-            text=f"<b>{bucket_labels[bucket]}</b><br>{int(counts.get(bucket, 0)):,}",
-            showarrow=False,
-            font=dict(color=MUTED, size=12),
-            opacity=0.9,
-        )
     fig.add_annotation(
         x=backlog_x,
         y=1.07,
@@ -1152,7 +1139,9 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
 
     _base_layout(fig, title, height=620)
     fig.update_layout(
-        margin=dict(l=82, r=36, t=72, b=128),
+        height=620,
+        showlegend=False,
+        margin=dict(l=82, r=36, t=70, b=72),
         legend=dict(
             orientation="h",
             yanchor="top",
@@ -1293,8 +1282,72 @@ def _plot_divs(
                 "modeBarButtonsToRemove": ["lasso2d", "select2d"],
             },
         )
+        if key in {"in_the_works_by_step", "owner_workload", "aging_by_step"} and fig.data:
+            divs[key] = (
+                '<div class="donut-layout"><div class="donut-plot">'
+                + divs[key] + '</div>' + _chart_category_list(fig, key) + '</div>'
+            )
+        elif key == "age_idle_action_matrix" and fig.data:
+            divs[key] = (
+                '<div class="risk-chart-frame"><div class="risk-plot-scroll" tabindex="0" '
+                'role="region" aria-label="Risk plot; scroll horizontally on narrow screens">'
+                + divs[key] + '</div>' + _chart_category_list(fig, key) + '</div>'
+            )
         include_plotlyjs = False
     return divs
+
+
+CATEGORY_SCRIPT = """
+<script>
+document.addEventListener('click', async event => {
+  const button = event.target.closest('.category-toggle');
+  if (!button) return;
+  const plot = document.getElementById(button.getAttribute('aria-controls'));
+  const visible = button.getAttribute('aria-pressed') === 'true';
+  button.setAttribute('aria-pressed', String(!visible));
+  if (button.dataset.categoryKind === 'pie') {
+    const hidden = new Set(plot.layout.hiddenlabels || []);
+    if (visible) hidden.add(button.dataset.categoryLabel);
+    else hidden.delete(button.dataset.categoryLabel);
+    await Plotly.relayout(plot, {hiddenlabels: Array.from(hidden)});
+  } else {
+    await Plotly.restyle(plot, {visible: visible ? 'legendonly' : true}, [Number(button.dataset.categoryIndex)]);
+  }
+});
+</script>
+"""
+
+
+def _chart_category_list(fig: go.Figure, key: str) -> str:
+    """Accessible, printable legends derived from the rendered traces."""
+    plot_id = f"plot-{key.replace('_', '-')}"
+    pie = fig.data[0].type == "pie"
+    rows = []
+    if pie:
+        trace = fig.data[0]
+        total = sum(trace.values)
+        categories = zip(
+            trace.customdata, trace.marker.colors, fig.layout.meta["category_values"]
+        )
+        for index, (label, color, value) in enumerate(categories):
+            share = ""
+            if fig.layout.meta["show_percent"]:
+                percentage = trace.values[index] / total if total else 0
+                share = f" · {percentage:.1%}"
+            rows.append((index, label, color, value + share))
+    else:
+        rows = [(index, trace.name, trace.marker.color, "") for index, trace in enumerate(fig.data)]
+    items = "".join(
+        f'<li><button type="button" class="category-toggle" aria-pressed="true" '
+        f'aria-controls="{plot_id}" data-category-index="{index}" '
+        f'data-category-label="{html.escape(str(fig.data[0].labels[index]) if pie else str(label), quote=True)}" '
+        f'data-category-kind="{"pie" if pie else "trace"}">'
+        f'<span class="category-swatch" style="background:{html.escape(str(color), quote=True)}" aria-hidden="true"></span>'
+        f'<span class="category-name">{html.escape(str(label))}</span>'
+        f'<strong>{html.escape(value)}</strong></button></li>'
+        for index, label, color, value in rows
+    )
+    return f'<ul class="chart-category-list" aria-label="Chart categories">{items}</ul>'
 
 
 def _help_control(label: str, help_text: str, *, help_id: str) -> str:
@@ -1737,7 +1790,7 @@ def _table_html(exceptions: pd.DataFrame) -> str:
         for column in table.columns
     )
     rows = []
-    for _, row in table.head(100).iterrows():
+    for _, row in table.iterrows():
         cells = "".join(
             f"<td>{html.escape('' if pd.isna(value) else str(value))}</td>"
             for value in row
@@ -1759,7 +1812,7 @@ def render_dashboard(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     generated = _format_generated_at(analytics.generated_at)
     divs = _plot_divs(analytics, history)
-    shown_exceptions = min(len(analytics.exceptions), 100)
+    shown_exceptions = len(analytics.exceptions)
     page_copy = content.PAGE
     sections = content.SECTION_CONTENT
     evaluation_table_copy = content.EVALUATION_TYPE_TABLE
@@ -1772,6 +1825,22 @@ def render_dashboard(
         shown=shown_exceptions,
         total=len(analytics.exceptions),
     )
+    main_tabs = tab_bar("sections", "Dashboard sections", (
+        ("operations-panel", sections["operations"].title),
+        ("evaluation-types-panel", sections["evaluation_types"].title),
+        ("trends-panel", sections["trends"].title),
+        ("staff-panel", sections["staff"].title),
+        ("exceptions-panel", sections["exceptions"].title),
+    ))
+    workload_tabs = tab_bar("operations", sections["operations"].title, (
+        ("case-metrics-panel", "Case Metrics"),
+        ("aging-panel", content.CHART_CONTENT["workflow_aging_matrix"].title),
+        ("risk-panel", content.CHART_CONTENT["age_idle_action_matrix"].title),
+    ))
+    staff_tabs = tab_bar("staff", sections["staff"].title, (
+        ("staff-volume-panel", content.CHART_CONTENT["submitted_by_workload"].title),
+        ("staff-date-panel", content.CHART_CONTENT["submitted_by_date_activity"].title),
+    ))
     html_text = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -2298,6 +2367,22 @@ def render_dashboard(
       color: var(--muted);
       padding: 22px;
     }}
+    .donut-layout {{ display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: center; gap: 24px; }}
+    .donut-plot {{ min-width: 0; }}
+    .chart-category-list {{ list-style: none; padding: 0; margin: 12px 0; }}
+    .category-toggle {{ display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; min-height: 44px; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font: inherit; font-size: 14px; cursor: pointer; }}
+    .category-toggle:hover {{ background: var(--surface-muted); }}
+    .category-toggle:focus-visible {{ outline: 3px solid var(--primary); }}
+    .category-toggle[aria-pressed="false"] .category-name {{ text-decoration: line-through; opacity: .65; }}
+    .category-name {{ overflow-wrap: anywhere; }}
+    .category-swatch {{ width: 12px; height: 12px; border-radius: 2px; }}
+    .risk-plot-scroll {{ overflow-x: auto; }}
+    .current-open-grid .action-matrix-card {{ overflow: visible; min-width: 0; }}
+    .action-matrix-card .chart-category-list {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }}
+    @media (max-width: 719px) {{
+      .donut-layout {{ grid-template-columns: minmax(0, 1fr); gap: 4px; }}
+      .donut-plot {{ width: 100%; max-width: 420px; margin: auto; }}
+    }}
     .page-footer {{
       display: flex;
       justify-content: flex-end;
@@ -2351,7 +2436,9 @@ def render_dashboard(
     @media (prefers-reduced-motion: reduce) {{
       html {{ scroll-behavior: auto; }}
     }}
+{NAVIGATION_STYLES}
 {PRINT_STYLES}
+{TOOLTIP_STYLES}
   </style>
 </head>
 <body>
@@ -2392,23 +2479,36 @@ def render_dashboard(
       <div class="kpi-grid">{_kpi_html(analytics)}</div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="operations-title">
+    <div class="dashboard-tabs" id="dashboard-tabs">
+    {main_tabs}
+    <section class="dashboard-section" id="operations-panel" data-tab-panel="sections" aria-labelledby="operations-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["operations"].eyebrow)}</span>
         <h2 class="section-title" id="operations-title">{html.escape(sections["operations"].title)}</h2>
         <p class="section-copy">{html.escape(sections["operations"].description or "")}</p>
       </div>
-      <div class="current-open-grid">
+      {workload_tabs}
+      <div id="case-metrics-panel" data-tab-panel="operations">
+      <div class="case-metrics-grid">
         {_chart_card(divs["in_the_works_by_step"], "in_the_works_by_step", help_id="in-the-works-by-step-help", context=analytics.presentation)}
         {_chart_card(divs["status_mix"], "status_mix", help_id="status-mix-help", context=analytics.presentation)}
         {_chart_card(divs["owner_workload"], "owner_workload", help_id="owner-workload-help", context=analytics.presentation)}
+      </div>
+      </div>
+      <div id="aging-panel" data-tab-panel="operations">
+      <div class="aging-grid">
         {_chart_card(divs["aging_by_step"], "aging_by_step", help_id="aging-by-step-help", context=analytics.presentation)}
         {_chart_card(divs["workflow_aging_matrix"], "workflow_aging_matrix", help_id="workflow-aging-matrix-help", extra_class="chart-container-wide", context=analytics.presentation)}
+      </div>
+      </div>
+      <div id="risk-panel" data-tab-panel="operations">
+      <div class="current-open-grid">
         {_age_idle_action_matrix_card(divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"])}
+      </div>
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="evaluation-types-title">
+    <section class="dashboard-section" id="evaluation-types-panel" data-tab-panel="sections" aria-labelledby="evaluation-types-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["evaluation_types"].eyebrow)}</span>
         <h2 class="section-title" id="evaluation-types-title">{html.escape(sections["evaluation_types"].title)}</h2>
@@ -2427,7 +2527,7 @@ def render_dashboard(
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="trends-title">
+    <section class="dashboard-section" id="trends-panel" data-tab-panel="sections" aria-labelledby="trends-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["trends"].eyebrow)}</span>
         <h2 class="section-title" id="trends-title">{html.escape(sections["trends"].title)}</h2>
@@ -2442,19 +2542,22 @@ def render_dashboard(
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="staff-title">
+    <section class="dashboard-section" id="staff-panel" data-tab-panel="sections" aria-labelledby="staff-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["staff"].eyebrow)}</span>
         <h2 class="section-title" id="staff-title">{html.escape(sections["staff"].title)}</h2>
         <p class="section-copy">{html.escape(sections["staff"].description or "")}</p>
       </div>
-      <div class="chart-stack">
+      {staff_tabs}
+      <div id="staff-volume-panel" data-tab-panel="staff">
         {_chart_card(divs["submitted_by_workload"], "submitted_by_workload", help_id="submitted-by-workload-help", context=analytics.presentation)}
+      </div>
+      <div id="staff-date-panel" data-tab-panel="staff">
         {_chart_card(divs["submitted_by_date_activity"], "submitted_by_date_activity", help_id="submitted-by-date-help", context=analytics.presentation)}
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="exceptions-title">
+    <section class="dashboard-section" id="exceptions-panel" data-tab-panel="sections" aria-labelledby="exceptions-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["exceptions"].eyebrow)}</span>
         <h2 class="section-title" id="exceptions-title">{html.escape(sections["exceptions"].title)}</h2>
@@ -2472,11 +2575,15 @@ def render_dashboard(
         </div>
       </div>
     </section>
+    </div>
 
     <footer class="page-footer">
       <a class="jump-to-top" href="#dashboard-top">{html.escape(page_copy.jump_to_top)}</a>
     </footer>
   </main>
+  {TOOLTIP_SCRIPT}
+  {NAVIGATION_SCRIPT}
+  {CATEGORY_SCRIPT}
   {export_script(_json_for_script)}
 </body>
 </html>

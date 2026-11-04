@@ -347,6 +347,20 @@ Each run writes a new timestamped set of files to a Boston-dated directory such 
 
 The date, weekday, timestamp, and timezone in these paths all use Boston local time. Previous run files are retained.
 
+The HTML report keeps the workflow legend and Cases Overview above five section
+tabs. Operational Workload has Case Metrics, Progress and Aging of Open Cases,
+and Open Cases Risk and Action Overview subtabs. Submission Activity by Staff
+has separate volume and date subtabs. Workflow Trends shows all five charts
+together. Tab bars remain available while scrolling; use the arrow keys to move
+between tabs and Enter or Space to select one. Charts use a more compact layout,
+and Notable Observations includes every observation in a scrollable table.
+Switching tabs preserves the page position, with a short fade and height
+transition; content above sticky navigation is gently brought into view only
+when needed. Reduced-motion preferences disable these animations. Help and
+Print / PDF tooltips choose a direction that fits the screen and remain above
+cards and tab bars. Hover, focus, or tap to open help; press Escape or tap outside
+to dismiss it.
+
 To save a PDF, open the HTML report and select **Print / PDF** beside its
 generation time. Hover over or focus the button for guidance.
 The report prepares its charts locally, then opens the browser print dialog.
@@ -359,14 +373,14 @@ settings can override these defaults. Turn off browser headers and footers to
 omit the local file URL. PDF export works offline in Chrome and Edge and creates
 no additional file during normal audit generation.
 
-The PDF includes all report sections, the observations already displayed in the
-HTML (up to 100, with the existing count notice), and any currently open case
-drilldown. Save or cancel the dialog to return to the interactive report. If
+The PDF includes all report sections, every case observation displayed in the
+HTML, and any currently open case drilldown. Save or cancel the dialog to return
+to the interactive report with the same selected tabs. If
 chart preparation fails, the report shows a retry message. Previously generated
 HTML files do not receive this feature automatically.
 
 Real browser PDF checks are opt-in and require an installed Chrome or Edge.
-Run `python -m pytest -q tests/test_dashboard_pdf.py` with
+Run `python -m pytest -q tests/test_dashboard_pdf.py tests/test_dashboard_navigation.py tests/test_dashboard_interactions.py` with
 `DASHBOARD_PDF_BROWSER=chrome` or `DASHBOARD_PDF_BROWSER=msedge` set in the
 environment. Optionally set `DASHBOARD_PDF_ARTIFACT_DIR` to retain the synthetic
 HTML and PDF samples for visual inspection. Without the browser variable, the

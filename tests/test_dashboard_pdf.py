@@ -83,10 +83,11 @@ def page(browser):
 
 
 def _open(page, path):
-    page.goto(path.as_uri())
+    page.goto(path.resolve().as_uri())
     page.wait_for_function(
         "Array.from(document.querySelectorAll('.chart-container .js-plotly-plot')).every(p => p.dataset.pdfReady === 'true')"
     )
+    page.wait_for_function("document.body.classList.contains('tabs-ready')")
 
 
 def _prepare(page):
@@ -220,6 +221,7 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
     artifact_dir = Path(os.environ.get("DASHBOARD_PDF_ARTIFACT_DIR", str(tmp_path)))
     artifact_dir.mkdir(parents=True, exist_ok=True)
     _open(page, _report(artifact_dir / f"{scenario}.html", scenario))
+    page.locator("#tab-risk-panel").click()
     if scenario != "empty":
         page.locator("[data-action-bucket]:not([disabled])").first.click()
         selected = page.locator("#age-idle-action-rows").inner_text()
@@ -236,8 +238,12 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
         t => t.scrollWidth <= t.clientWidth + 1)"""
     )
     if scenario == "stress":
-        assert page.locator("#problem-rows-table tbody tr").count() == 100
+        assert page.locator("#problem-rows-table tbody tr").count() == 120
         assert page.locator("#age-idle-action-rows tr").count() == 120
+    if scenario != "empty":
+        assert page.locator('.risk-chart-frame').evaluate(
+            'e => getComputedStyle(e).display') == 'inline-block'
+        assert page.locator('.risk-chart-frame').bounding_box()['height'] < 600
     pdf = page.pdf(
         path=str(artifact_dir / f"{scenario}.pdf"),
         prefer_css_page_size=True,
@@ -251,7 +257,9 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
     expect(page.locator("#pdf-export-status")).to_be_empty()
     expect(page.locator(".pdf-spinner")).to_be_hidden()
     assert page.locator(".pdf-chart").count() == 0
-    assert page.locator(".js-plotly-plot").first.is_visible()
+    assert page.locator("#plot-age-idle-action-matrix").is_visible()
+    assert page.locator("#risk-panel").is_visible()
+    assert page.locator("#case-metrics-panel").is_hidden()
     if scenario != "empty":
         assert page.locator("#age-idle-action-rows").inner_text() == selected
         page.locator("#age-idle-action-clear").click()

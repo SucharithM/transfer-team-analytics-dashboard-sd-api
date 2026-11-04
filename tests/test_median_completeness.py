@@ -141,7 +141,9 @@ def test_age_by_step_keeps_undercovered_group_without_showing_sample_sizes() -> 
     assert "percent" not in trace.texttemplate
     assert "Share" not in trace.hovertemplate
     assert "valid" not in trace.hovertemplate
-    assert chart.layout.annotations[0].text == "<b>1.0d</b>"
+    assert chart.layout.annotations[0].text.startswith("<b>1.0d</b>")
+    assert "Overall median" in chart.layout.annotations[0].text
+    assert chart.layout.meta["category_values"] == ["1.0d", "—"]
 
 
 def test_monthly_completion_keeps_volume_and_suppresses_one_of_one_hundred() -> None:
