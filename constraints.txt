@@ -19,7 +19,7 @@ pluggy==1.6.0
 pyee==13.0.1
 pygments==2.21.0
 pyinstaller==6.22.3
-pyinstaller-hooks-contrib==2026.8
+pyinstaller-hooks-contrib==2026.9
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
