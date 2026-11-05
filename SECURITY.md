@@ -6,6 +6,12 @@ The bundled fixture and roster are synthetic. Configure live endpoints and staff
 
 All generated HTML, CSV, Excel, and SQLite files can contain sensitive source data. Keep them private. Protect the selected output directory and retain reports only as long as needed. Do not enable browser/network tracing with live authentication.
 
+New HTML reports include a Content Security Policy that authorizes embedded
+scripts by their SHA-256 hashes and blocks network connections, external scripts,
+embedded objects, base URL changes, and form submissions. Inline styles and
+data/blob images remain available for Plotly charts and printing. Regenerate old
+reports to apply this policy.
+
 The desktop **Send Error Logs** action opens a read-only technical diagnostic
 preview. **Copy Logs** copies that exact report for manual sharing; it does not
 upload or email anything. Events stay in application memory for the current

@@ -30,8 +30,8 @@ PRIVATE_DIRECTORIES = {
 }
 
 
-def git(*args: str) -> bytes:
-    return subprocess.check_output(["git", *args], cwd=ROOT)
+def git(*args: str, input: bytes | None = None) -> bytes:
+    return subprocess.check_output(["git", *args], cwd=ROOT, input=input)
 
 
 def private_path(name: str) -> bool:
@@ -64,7 +64,7 @@ def scan(data: bytes, label: str, *, test_file: bool = False) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--working-tree", action="store_true", help="Also inspect unignored untracked files")
-    parser.add_argument("--all-objects", action="store_true", help="Include unreachable Git blobs")
+    parser.add_argument("--all-objects", action="store_true", help="Include unreachable Git files, commits, and annotated tags")
     args = parser.parse_args()
     staged = []
     for entry in git("ls-files", "--stage", "-z").decode().split("\0"):
@@ -92,22 +92,31 @@ def main() -> int:
         elif path.is_file():
             findings += scan(path.read_bytes(), name, test_file=name.startswith("tests/"))
 
-    historical = {}
-    for row in git("rev-list", "--objects", "--all", "--reflog").decode().splitlines():
-        oid, _, name = row.partition(" ")
-        historical[oid] = name
-        if name and private_path(name):
-            findings.append(f"history {oid[:12]} {name}: private artifact exists in reachable history")
+    history_rows = git("rev-list", "--objects", "--all", "--reflog").decode().splitlines()
     if args.all_objects:
-        objects = git("cat-file", "--batch-all-objects", "--batch-check=%(objectname) %(objecttype)").decode().splitlines()
-        blobs = [row.split()[0] for row in objects if row.endswith(" blob")]
-    else:
-        blobs = [oid for oid in historical if git("cat-file", "-t", oid).strip() == b"blob"]
-    for oid in blobs:
-        name = historical.get(oid, "unmapped blob")
-        findings += scan(git("cat-file", "blob", oid), f"history {oid[:12]} {name}", test_file=name.startswith("tests/"))
+        objects = [tuple(row.split()) for row in git(
+            "cat-file", "--batch-all-objects", "--batch-check=%(objectname) %(objecttype)"
+        ).decode().splitlines()]
+        # Recover test paths from unreachable commits before applying the synthetic-URL exception.
+        commits = "\n".join(oid for oid, kind in objects if kind == "commit")
+        if commits:
+            history_rows += git("rev-list", "--objects", "--stdin", input=commits.encode()).decode().splitlines()
+    historical = {}
+    for row in history_rows:
+        oid, _, name = row.partition(" ")
+        if name or oid not in historical:
+            historical[oid] = name
+        if name and private_path(name):
+            findings.append(f"history {oid[:12]} {name}: private artifact exists in Git history")
+    if not args.all_objects:
+        objects = [(oid, git("cat-file", "-t", oid).decode().strip()) for oid in historical]
+    scanned = [(oid, kind) for oid, kind in objects if kind in {"blob", "commit", "tag"}]
+    for oid, kind in scanned:
+        name = historical.get(oid) or f"unmapped {kind}"
+        findings += scan(git("cat-file", kind, oid), f"history {kind} {oid[:12]} {name}",
+                         test_file=kind == "blob" and name.startswith("tests/"))
     findings = sorted(set(findings))
-    print(f"Inspected {len(files)} publication files and {len(blobs)} Git blobs.")
+    print(f"Inspected {len(files)} publication files and {len(scanned)} Git objects (files, commits, and annotated tags).")
     for finding in findings:
         print(finding)
     if findings:

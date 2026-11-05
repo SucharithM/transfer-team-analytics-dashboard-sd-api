@@ -627,10 +627,10 @@ def test_desktop_paths_are_local_and_default_preset_is_nonsecret(monkeypatch, tm
     monkeypatch.setattr(desktop, "application_directory", lambda: tmp_path)
     monkeypatch.setenv("WORKFLOW_API_TOKEN", TOKEN)
     config = desktop.desktop_config()
-    # The bundled nonsecret preset may be customized before a Windows build.
+    # Only the synthetic example is bundled; live settings stay per user.
     preset = tomllib.loads(
         Path(desktop.__file__)
-        .with_name("desktop_settings.toml")
+        .with_name("desktop_settings.toml.example")
         .read_text(encoding="utf-8")
     )
     root = Path(preset.get("data_directory", tmp_path))

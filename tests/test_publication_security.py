@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -80,6 +81,22 @@ def test_private_roster_is_only_loaded_from_explicit_local_configuration(tmp_pat
     env.write_text('WORKFLOW_TEAM_MEMBERS=["Synthetic, Local Staff"]\n')
     assert load_config(env_file=env).team_members == ("Synthetic, Local Staff",)
     assert DashboardConfig().team_members[0] == "Staff Member A"
+
+
+def test_desktop_settings_are_ignored_and_example_stays_synthetic(monkeypatch, tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    assert subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "workflow_dashboard/desktop_settings.toml"],
+        cwd=root,
+    ).returncode == 0
+    assert subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "workflow_dashboard/desktop_settings.toml.example"],
+        cwd=root,
+    ).returncode == 1
+    monkeypatch.setattr("workflow_dashboard.desktop.application_directory", lambda: tmp_path)
+    config = desktop_config()
+    assert config.api_url == DashboardConfig().api_url
+    assert config.team_members == DashboardConfig().team_members
 
 
 def test_published_fixture_is_explicitly_synthetic():

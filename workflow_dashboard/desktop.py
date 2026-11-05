@@ -36,7 +36,7 @@ def application_directory() -> Path:
 def desktop_config(settings_path: Path | None = None) -> DashboardConfig:
     root = application_directory()
     local_settings = root / "settings.toml"
-    settings = settings_path or (local_settings if local_settings.exists() else Path(__file__).with_name("desktop_settings.toml"))
+    settings = settings_path or (local_settings if local_settings.exists() else Path(__file__).with_name("desktop_settings.toml.example"))
     with settings.open("rb") as file:
         values = tomllib.load(file)
     data_directory = values.pop("data_directory", None)
@@ -48,7 +48,7 @@ def desktop_config(settings_path: Path | None = None) -> DashboardConfig:
                "backlog_age_days", "stale_idle_days", "old_age_days", "request_timeout_seconds",
                "minimum_wait_completeness", "minimum_idle_completeness", "minimum_completion_completeness"}
     if set(values) - allowed:
-        raise ValueError("Settings contain unsupported fields. Use only the fields in desktop_settings.toml.")
+        raise ValueError("Settings contain unsupported fields. Use only the fields in desktop_settings.toml.example.")
     for name in ("team_members", "status_filters"):
         if name in values:
             if not isinstance(values[name], list) or not all(isinstance(v, str) for v in values[name]):

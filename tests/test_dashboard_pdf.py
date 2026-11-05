@@ -1,6 +1,9 @@
 """Browser checks are opt-in: DASHBOARD_PDF_BROWSER=chrome (or msedge)."""
 
 import os
+import base64
+import hashlib
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pandas as pd
@@ -53,6 +56,64 @@ def test_pdf_action_is_embedded_without_creating_a_pdf(tmp_path):
     assert set(path.suffix for path in tmp_path.iterdir()) == {".html"}
 
 
+def test_report_policy_authorizes_only_the_embedded_scripts(tmp_path):
+    class ReportParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.policy = None
+            self.scripts = []
+            self.in_script = False
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "meta" and attrs.get("http-equiv") == "Content-Security-Policy":
+                self.policy = attrs["content"]
+            if tag == "script":
+                assert self.policy is not None
+                assert "src" not in attrs
+                self.scripts.append("")
+                self.in_script = True
+
+        def handle_data(self, data):
+            if self.in_script:
+                self.scripts[-1] += data
+
+        def handle_endtag(self, tag):
+            if tag == "script":
+                self.in_script = False
+
+    report = ReportParser()
+    report.feed(_report(tmp_path / "report.html").read_text(encoding="utf-8"))
+    directives = {parts[0]: parts[1:] for directive in report.policy.split(";") if (parts := directive.split())}
+    expected = {"'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
+                for script in report.scripts}
+    assert set(directives["script-src"]) == expected
+    for name in ("default-src", "object-src", "base-uri", "form-action"):
+        assert directives[name] == ["'none'"]
+
+
+def test_report_policy_blocks_added_scripts_and_connections(page, tmp_path, monkeypatch):
+    from workflow_dashboard import dashboard_html
+
+    table_html = dashboard_html._table_html
+    monkeypatch.setattr(dashboard_html, "_table_html", lambda table:
+        table_html(table) + '<script>window.renderInjectionRan = true;</script>')
+    page.add_init_script("""window.cspViolations = [];
+        document.addEventListener('securitypolicyviolation', event => {
+          window.cspViolations.push(event.effectiveDirective);
+        });""")
+    path = _report(tmp_path / "report.html")
+    markup = path.read_text(encoding="utf-8")
+    path.write_text(markup.replace("</body>",
+        '<script>window.injectedScriptRan = true;</script></body>'), encoding="utf-8")
+    _open(page, path)
+    page.wait_for_function("() => window.cspViolations.includes('script-src-elem')")
+    assert page.evaluate("window.injectedScriptRan === undefined")
+    assert page.evaluate("window.renderInjectionRan === undefined")
+    page.evaluate("fetch('https://blocked.example.test/records').catch(() => {})")
+    page.wait_for_function("() => window.cspViolations.includes('connect-src')")
+
+
 @pytest.fixture
 def browser():
     channel = os.environ.get("DASHBOARD_PDF_BROWSER")
@@ -85,9 +146,9 @@ def page(browser):
 def _open(page, path):
     page.goto(path.resolve().as_uri())
     page.wait_for_function(
-        "Array.from(document.querySelectorAll('.chart-container .js-plotly-plot')).every(p => p.dataset.pdfReady === 'true')"
+        "() => Array.from(document.querySelectorAll('.chart-container .js-plotly-plot')).every(p => p.dataset.pdfReady === 'true')"
     )
-    page.wait_for_function("document.body.classList.contains('tabs-ready')")
+    page.wait_for_function("() => document.body.classList.contains('tabs-ready')")
 
 
 def _prepare(page):
@@ -189,9 +250,9 @@ def test_keyboard_loading_feedback_and_print_restore(page, tmp_path):
         )
         == "none"
     )
-    page.wait_for_function("typeof window.releasePdfPreparation === 'function'")
+    page.wait_for_function("() => typeof window.releasePdfPreparation === 'function'")
     page.evaluate("window.releasePdfPreparation()")
-    page.wait_for_function("window.printCalls === 1")
+    page.wait_for_function("() => window.printCalls === 1")
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     expect(button).to_be_enabled()
     expect(button).to_have_text(PAGE.save_pdf)
@@ -200,7 +261,7 @@ def test_keyboard_loading_feedback_and_print_restore(page, tmp_path):
     expect(page.locator(".pdf-printer-icon")).to_be_visible()
     assert not button.get_attribute("aria-busy")
     button.press("Space")
-    page.wait_for_function("window.printCalls === 2")
+    page.wait_for_function("() => window.printCalls === 2")
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     expect(button).to_have_text(PAGE.save_pdf)
     page.emulate_media(media="print")
@@ -279,7 +340,7 @@ def test_preparation_failure_and_duplicate_clicks(page, tmp_path):
     }""")
     page.locator("#save-pdf").click()
     page.wait_for_function(
-        "document.getElementById('pdf-export-status').textContent.includes('Please try again')"
+        "() => document.getElementById('pdf-export-status').textContent.includes('Please try again')"
     )
     assert page.evaluate("window.printCalls") == 0
     assert page.locator("#save-pdf").is_enabled()
@@ -294,7 +355,7 @@ def test_preparation_failure_and_duplicate_clicks(page, tmp_path):
       button.dispatchEvent(new Event('click'));
       button.dispatchEvent(new Event('click'));
     }""")
-    page.wait_for_function("window.printCalls === 1")
+    page.wait_for_function("() => window.printCalls === 1")
     assert page.locator(".pdf-chart").count() == 13
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     assert page.locator("#save-pdf").is_enabled()
