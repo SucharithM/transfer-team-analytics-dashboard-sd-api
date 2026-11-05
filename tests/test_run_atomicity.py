@@ -16,9 +16,7 @@ from .test_analytics_cohorts import build_sample_analytics
 from .test_analytics_cohorts import sample_cases
 
 
-def _run_args(
-    tmp_path: Path, *, output_dir: Path | None = None
-) -> argparse.Namespace:
+def _run_args(tmp_path: Path, *, output_dir: Path | None = None) -> argparse.Namespace:
     return argparse.Namespace(
         source="fixture",
         output_dir=output_dir or tmp_path / "outputs",
@@ -35,9 +33,7 @@ def _output_files(output_dir: Path) -> list[Path]:
 
 def _snapshot_count(db_path: Path) -> int:
     with sqlite3.connect(db_path) as connection:
-        return connection.execute(
-            "SELECT COUNT(*) FROM snapshot_metrics"
-        ).fetchone()[0]
+        return connection.execute("SELECT COUNT(*) FROM snapshot_metrics").fetchone()[0]
 
 
 def _sample_definition():
@@ -49,10 +45,14 @@ def _sample_definition():
 
 
 def test_empty_api_population_exports_all_files_and_zero_history(tmp_path):
-    config = DashboardConfig(output_dir=tmp_path / "outputs",
-                             history_db_path=tmp_path / "history.sqlite")
+    config = DashboardConfig(
+        output_dir=tmp_path / "outputs", history_db_path=tmp_path / "history.sqlite"
+    )
     result = generation.generate_dashboard(
-        config, [], {"pagination_validated": True}, source="api",
+        config,
+        [],
+        {"pagination_validated": True},
+        source="api",
         generated_at=pd.Timestamp("2026-11-03T17:00:00Z"),
     )
     assert result["records"] == 0
@@ -106,8 +106,7 @@ def test_late_writer_failure_publishes_nothing_and_preserves_history(
     assert _snapshot_count(args.history_db) == 1
     assert _output_files(args.output_dir) == []
     assert not any(
-        path.name.startswith(".workflow-run-")
-        for path in args.output_dir.rglob("*")
+        path.name.startswith(".workflow-run-") for path in args.output_dir.rglob("*")
     )
 
 
@@ -135,7 +134,9 @@ def test_partial_publication_is_removed_before_history_commit(
     assert _output_files(args.output_dir) == []
 
 
-def test_history_failure_removes_published_artifacts(monkeypatch, tmp_path, capsys) -> None:
+def test_history_failure_removes_published_artifacts(
+    monkeypatch, tmp_path, capsys
+) -> None:
     args = _run_args(tmp_path)
 
     def fail_history(*args, **kwargs) -> None:
@@ -165,8 +166,7 @@ def test_success_publishes_complete_set_and_commits_rendered_run(
     }
     assert set(output_paths) == {"csv", "html", "excel"}
     assert all(
-        path.is_file() and path.stat().st_size > 0
-        for path in output_paths.values()
+        path.is_file() and path.stat().st_size > 0 for path in output_paths.values()
     )
     assert _snapshot_count(args.history_db) == 1
 
@@ -180,9 +180,7 @@ def test_success_publishes_complete_set_and_commits_rendered_run(
     workbook = load_workbook(output_paths["excel"], read_only=True)
     history_rows = list(workbook["History Trends"].iter_rows(values_only=True))
     run_id_column = history_rows[0].index("run_id")
-    assert result["run_id"] in {
-        row[run_id_column] for row in history_rows[1:]
-    }
+    assert result["run_id"] in {row[run_id_column] for row in history_rows[1:]}
 
 
 def _mixed_workflow_records() -> list[dict[str, str]]:
@@ -277,9 +275,7 @@ def test_filtered_population_reaches_every_artifact_and_history(
     assert normalized["workflow_name"].tolist() == ["Workflow A"]
 
     workbook = load_workbook(result["outputs"]["excel"], read_only=True)
-    normalized_rows = list(
-        workbook["Normalized Records"].iter_rows(values_only=True)
-    )
+    normalized_rows = list(workbook["Normalized Records"].iter_rows(values_only=True))
     record_id_column = normalized_rows[0].index("package_id")
     assert [row[record_id_column] for row in normalized_rows[1:]] == ["included"]
 
