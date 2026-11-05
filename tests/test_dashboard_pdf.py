@@ -198,6 +198,12 @@ def _open(page, path):
     page.wait_for_function("() => document.body.classList.contains('tabs-ready')")
 
 
+def test_report_omits_cloud_sharing_button(page, tmp_path):
+    _open(page, _report(tmp_path / "report.html"))
+    assert page.locator(".modebar-btn").count() > 0
+    assert page.locator('[data-title="Share chart..."]').count() == 0
+
+
 def _prepare(page):
     before = page.evaluate("window.printCalls")
     page.locator("#save-pdf").click()

@@ -1292,7 +1292,7 @@ def _plot_divs(
                 "responsive": True,
                 "displaylogo": False,
                 "displayModeBar": "hover",
-                "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+                "modeBarButtonsToRemove": ["lasso2d", "select2d", "sendChartToCloud"],
             },
         )
         if (
