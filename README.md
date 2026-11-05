@@ -72,10 +72,12 @@ Cancelling the chooser starts no work. A validated folder choice is remembered
 even if sign-in is later cancelled; a save failure shows a warning but permits
 generation to continue.
 
-Desktop defaults are in
-[`workflow_dashboard/desktop_settings.toml`](workflow_dashboard/desktop_settings.toml).
-Use `python -m workflow_dashboard desktop --settings /path/to/settings.toml` to
-customize them. Keep organization-specific settings in ignored local files.
+Synthetic desktop defaults are in
+[`workflow_dashboard/desktop_settings.toml.example`](workflow_dashboard/desktop_settings.toml.example).
+Copy this example to an ignored `settings.toml`, then customize that copy.
+Use `python -m workflow_dashboard desktop --settings /path/to/settings.toml`, or
+save it in the per-user settings location listed below to load it automatically.
+Keep the tracked example synthetic; Windows builds bundle only that example.
 Desktop settings do not accept credentials or custom request headers. The desktop
 app does not load `.env`; CLI commands use it for local configuration.
 
@@ -220,7 +222,8 @@ python tools/check_publication.py --working-tree
 ```
 
 The checker scans staged contents, tracked working files, eligible untracked
-files, and reachable Git history for private paths and supported secret patterns
-without printing matched values. Use `--all-objects` to include unreachable blobs
+files, and reachable Git history for private paths and supported secret patterns,
+including commit messages and annotated-tag contents, without printing matched
+values. Use `--all-objects` to include unreachable files, commits, and annotated tags
 when reviewing a local repository. Review the staged diff and follow the
 [security checklist](SECURITY.md) before publication.

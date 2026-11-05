@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from workflow_dashboard import desktop
 
-desktop.desktop_config(Path(desktop.__file__).with_name("desktop_settings.toml"))
+desktop.desktop_config(Path(desktop.__file__).with_name("desktop_settings.toml.example"))
 session = desktop.DiagnosticSession("msedge")
 session.begin(0)
 session.finish(0, "success")

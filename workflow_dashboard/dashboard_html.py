@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import json
 import math
+import re
 import textwrap
 from pathlib import Path
 
@@ -1805,6 +1807,20 @@ def _table_html(exceptions: pd.DataFrame) -> str:
     return f'<table class="data-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
+def _content_security_policy(markup: str) -> str:
+    scripts = re.findall(r"<script\b[^>]*>(.*?)</script\s*>", markup, re.DOTALL | re.IGNORECASE)
+    # Browsers normalize line endings before checking inline script hashes.
+    hashes = [
+        "'sha256-" + base64.b64encode(hashlib.sha256(
+            script.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+        ).digest()).decode("ascii") + "'"
+        for script in scripts
+    ]
+    return ("default-src 'none'; script-src " + " ".join(hashes)
+            + "; style-src 'unsafe-inline'; img-src data: blob:; "
+            "object-src 'none'; base-uri 'none'; form-action 'none'")
+
+
 def render_dashboard(
     *,
     df: pd.DataFrame,
@@ -1818,6 +1834,15 @@ def render_dashboard(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     generated = _format_generated_at(analytics.generated_at)
     divs = _plot_divs(analytics, history)
+    matrix_card = _age_idle_action_matrix_card(
+        divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"]
+    )
+    print_script = export_script(_json_for_script)
+    # Hash known script fragments before any report tables are rendered.
+    policy = html.escape(_content_security_policy(
+        "".join(divs.values()) + matrix_card + TOOLTIP_SCRIPT + NAVIGATION_SCRIPT
+        + CATEGORY_SCRIPT + print_script
+    ), quote=True)
     shown_exceptions = len(analytics.exceptions)
     page_copy = content.PAGE
     sections = content.SECTION_CONTENT
@@ -1851,6 +1876,7 @@ def render_dashboard(
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="{policy}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(analytics.dashboard_title)}</title>
   <style>
@@ -2523,7 +2549,7 @@ def render_dashboard(
       </div>
       <div id="risk-panel" data-tab-panel="operations">
       <div class="current-open-grid">
-        {_age_idle_action_matrix_card(divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"])}
+        {matrix_card}
       </div>
       </div>
     </section>
@@ -2604,9 +2630,9 @@ def render_dashboard(
   {TOOLTIP_SCRIPT}
   {NAVIGATION_SCRIPT}
   {CATEGORY_SCRIPT}
-  {export_script(_json_for_script)}
+  {print_script}
 </body>
 </html>
 """
-    output_path.write_text(html_text, encoding="utf-8")
+    output_path.write_text(html_text, encoding="utf-8", newline="\n")
     return output_path

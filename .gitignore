@@ -44,7 +44,7 @@ local_settings.py
 .private/
 .publication/
 *.local.toml
-settings.toml
+*settings.toml
 preferences.json
 outputs/
 data/private/

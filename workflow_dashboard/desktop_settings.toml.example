@@ -1,8 +1,9 @@
-# Nonsecret manager-facing defaults. No tokens, cookies, or passwords belong here.
+# Synthetic defaults only. Copy to an ignored settings.toml for live configuration.
+# No tokens, cookies, or passwords belong in desktop settings.
 api_url = "https://tenant.example.test/flow/api/user-dashboard/packages"
 dashboard_title = "Transfer Credit Evaluation Executive Dashboard"
 workflow_filter = "Example  Transcript Evaluation Form"
-# Replace these synthetic names with submitter names from your API before building.
+# Keep this example synthetic; configure real submitter names only in settings.toml.
 team_members = ["Staff Member A", "Staff Member B", "Staff Member C", "Staff Member D", "Staff Member E"]
 # Optional absolute path for history and preferences. Leave unset for portable
 # builds: Windows uses %LOCALAPPDATA%\WorkflowTransferDashboard for each user.

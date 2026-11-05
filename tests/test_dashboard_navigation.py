@@ -154,7 +154,7 @@ def test_compact_layout_and_plot_resize(page, tmp_path, width):
         page.locator('#case-metrics-panel').screenshot(path=str(Path(artifact_dir) / f'metrics-{width}.png'))
     page.locator('#tab-trends-panel').click()
     page.evaluate("window.scrollTo({top: document.querySelector('.dashboard-tabs').offsetTop + 150, behavior: 'instant'})")
-    page.wait_for_function("Math.abs(document.querySelector('[data-tab-list=sections]').getBoundingClientRect().top) < 2")
+    page.wait_for_function("() => Math.abs(document.querySelector('[data-tab-list=sections]').getBoundingClientRect().top) < 2")
 
 
 def test_all_observations_scroll_and_print_without_changing_selection(page, tmp_path):
@@ -195,7 +195,7 @@ def test_failed_enhancement_restores_the_readable_report(page, tmp_path):
       constructor() { window.navigationFailureReached = true; throw new Error('synthetic failure'); }
     };""")
     page.goto(path.as_uri())
-    page.wait_for_function('window.navigationFailureReached === true')
+    page.wait_for_function('() => window.navigationFailureReached === true')
     assert page.locator('[data-tab-panel="sections"]:visible').count() == 5
     expect(page.locator('.dashboard-tabbar').first).to_be_hidden()
     expect(page.locator('#operations-panel')).to_have_attribute('aria-labelledby', 'operations-title')
@@ -235,13 +235,13 @@ def test_readable_chart_categories_and_risk_frame(page, tmp_path, width):
     assert legend.bounding_box()['y'] >= risk.bounding_box()['y'] + risk.bounding_box()['height']
     button = legend.locator('button').first
     button.click()
-    page.wait_for_function("document.getElementById('plot-age-idle-action-matrix').data[0].visible === 'legendonly'")
+    page.wait_for_function("() => document.getElementById('plot-age-idle-action-matrix').data[0].visible === 'legendonly'")
     button.click()
-    page.wait_for_function("document.getElementById('plot-age-idle-action-matrix').data[0].visible === true")
+    page.wait_for_function("() => document.getElementById('plot-age-idle-action-matrix').data[0].visible === true")
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
     if artifact_dir:
-        page.wait_for_function("!document.querySelector('.dashboard-tabs').style.minHeight")
+        page.wait_for_function("() => !document.querySelector('.dashboard-tabs').style.minHeight")
         page.mouse.move(0, 0)
         page.locator('.action-matrix-card').screenshot(
             path=str(Path(artifact_dir) / f'risk-{width}.png'),
@@ -252,10 +252,10 @@ def test_footer_tracks_content_and_returns_to_top(page, tmp_path):
     _open(page, _report(tmp_path / 'report.html'))
     for panel in ['staff-panel', 'exceptions-panel', 'operations-panel']:
         page.locator('#tab-' + panel).click()
-        page.wait_for_function("!document.querySelector('.dashboard-tabs').style.minHeight")
+        page.wait_for_function("() => !document.querySelector('.dashboard-tabs').style.minHeight")
         gap = page.evaluate("""() => document.querySelector('.page-footer').getBoundingClientRect().top
           - document.querySelector('.dashboard-tabs').getBoundingClientRect().bottom""")
         assert gap == pytest.approx(24, abs=1)
         assert page.locator('.dashboard-tabs').evaluate("e => getComputedStyle(e).minHeight") == '0px'
     page.locator('.jump-to-top').click()
-    page.wait_for_function('scrollY < 2')
+    page.wait_for_function('() => scrollY < 2')
