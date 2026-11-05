@@ -9,7 +9,9 @@ python -m pip install -r requirements-bootstrap.txt
 if ($LASTEXITCODE -ne 0) { throw 'Installer update failed.' }
 python -m pip install -r requirements-dev.txt -r packaging/requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
-python -m pytest -q
+# Avoid stale permissions in Windows' shared pytest temp root.
+New-Item -ItemType Directory -Force -Path build | Out-Null
+python -m pytest -q --basetemp=build/pytest-temp
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed; no executable will be built.' }
 python -m workflow_dashboard.build_identity --output build/build_identity.json
 if ($LASTEXITCODE -ne 0) { throw 'Build identity generation failed.' }

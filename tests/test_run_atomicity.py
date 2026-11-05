@@ -57,7 +57,7 @@ def test_empty_api_population_exports_all_files_and_zero_history(tmp_path):
     )
     assert result["records"] == 0
     assert pd.read_csv(result["outputs"]["csv"]).empty
-    assert "Open Cases" in Path(result["outputs"]["html"]).read_text()
+    assert "Open Cases" in Path(result["outputs"]["html"]).read_text(encoding="utf-8")
     workbook = load_workbook(result["outputs"]["excel"], read_only=True)
     try:
         assert len(list(workbook["Normalized Records"].values)) == 1
