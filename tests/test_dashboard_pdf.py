@@ -13,7 +13,7 @@ from playwright.sync_api import expect, sync_playwright
 from workflow_dashboard.analytics import build_analytics
 from workflow_dashboard.config import DashboardConfig
 from workflow_dashboard.dashboard_content import PAGE
-from workflow_dashboard.dashboard_html import render_dashboard
+from workflow_dashboard.dashboard_html import _content_security_policy, render_dashboard
 
 from .test_analytics_cohorts import GENERATED_AT, sample_cases
 from .test_outputs import _history_frames
@@ -54,6 +54,21 @@ def test_pdf_action_is_embedded_without_creating_a_pdf(tmp_path):
     assert 'aria-describedby="pdf-export-hint"' in markup
     assert 'role="status" aria-live="polite"' in markup
     assert set(path.suffix for path in tmp_path.iterdir()) == {".html"}
+
+
+@pytest.mark.parametrize("end_tag", [
+    "</script>", "</SCRIPT>", "</script >", "</script\t\n bar>",
+    '</script foo="bar">', "</script/>",
+])
+def test_report_policy_hashes_browser_accepted_script_end_tags(end_tag):
+    script = 'const value = "</scripture></script!>";\r\nconst next = 1;\r'
+    markup = '<scripture>not a script</scripture><script>' + script + end_tag
+    policy = _content_security_policy(markup)
+    directives = {parts[0]: parts[1:] for directive in policy.split(";")
+                  if (parts := directive.split())}
+    normalized = script.replace("\r\n", "\n").replace("\r", "\n")
+    expected = "'sha256-" + base64.b64encode(hashlib.sha256(normalized.encode()).digest()).decode() + "'"
+    assert directives["script-src"] == [expected]
 
 
 def test_report_policy_authorizes_only_the_embedded_scripts(tmp_path):

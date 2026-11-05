@@ -1808,7 +1808,7 @@ def _table_html(exceptions: pd.DataFrame) -> str:
 
 
 def _content_security_policy(markup: str) -> str:
-    scripts = re.findall(r"<script\b[^>]*>(.*?)</script\s*>", markup, re.DOTALL | re.IGNORECASE)
+    scripts = re.findall(r"<script\b[^>]*>(.*?)</script(?=[\t\n\f\r />])[^>]*>", markup, re.DOTALL | re.IGNORECASE)
     # Browsers normalize line endings before checking inline script hashes.
     hashes = [
         "'sha256-" + base64.b64encode(hashlib.sha256(
