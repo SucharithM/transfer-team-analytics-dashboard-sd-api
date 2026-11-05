@@ -320,11 +320,7 @@ def _donut_chart(
     displayed_center = (
         center_text if center_text is not None else f"{int(values.sum()):,}"
     )
-    value_template = (
-        "%{text}"
-        if one_decimal
-        else f"%{{value:,}}{value_suffix}"
-    )
+    value_template = "%{text}" if one_decimal else f"%{{value:,}}{value_suffix}"
     texttemplate = (
         value_template + "<br>%{percent:.1%}" if show_percent else value_template
     )
@@ -345,8 +341,12 @@ def _donut_chart(
             labels=wrapped_labels,
             values=values,
             text=(
-                [format_one_decimal(value, suffix=value_suffix, missing="—") for value in ordered[value_col]]
-                if one_decimal else None
+                [
+                    format_one_decimal(value, suffix=value_suffix, missing="—")
+                    for value in ordered[value_col]
+                ]
+                if one_decimal
+                else None
             ),
             customdata=raw_labels,
             hole=0.58,
@@ -370,9 +370,14 @@ def _donut_chart(
         showlegend=False,
         meta={
             "category_values": [
-                "—" if pd.isna(value) else (
-                    format_one_decimal(value, suffix=value_suffix)
-                    if one_decimal else f"{int(value):,}"
+                (
+                    "—"
+                    if pd.isna(value)
+                    else (
+                        format_one_decimal(value, suffix=value_suffix)
+                        if one_decimal
+                        else f"{int(value):,}"
+                    )
                 )
                 for value in pd.to_numeric(ordered[value_col], errors="coerce")
             ],
@@ -381,9 +386,11 @@ def _donut_chart(
         uniformtext=dict(minsize=11, mode="hide"),
         annotations=[
             dict(
-                text=f"<b>{displayed_center}</b>" + (
+                text=f"<b>{displayed_center}</b>"
+                + (
                     "<br><span style='font-size:13px'>Overall median</span>"
-                    if one_decimal else ""
+                    if one_decimal
+                    else ""
                 ),
                 x=0.5,
                 y=0.5,
@@ -1288,16 +1295,25 @@ def _plot_divs(
                 "modeBarButtonsToRemove": ["lasso2d", "select2d"],
             },
         )
-        if key in {"in_the_works_by_step", "owner_workload", "aging_by_step"} and fig.data:
+        if (
+            key in {"in_the_works_by_step", "owner_workload", "aging_by_step"}
+            and fig.data
+        ):
             divs[key] = (
                 '<div class="donut-layout"><div class="donut-plot">'
-                + divs[key] + '</div>' + _chart_category_list(fig, key) + '</div>'
+                + divs[key]
+                + "</div>"
+                + _chart_category_list(fig, key)
+                + "</div>"
             )
         elif key == "age_idle_action_matrix" and fig.data:
             divs[key] = (
                 '<div class="risk-chart-frame"><div class="risk-plot-scroll" tabindex="0" '
                 'role="region" aria-label="Risk plot; scroll horizontally on narrow screens">'
-                + divs[key] + '</div>' + _chart_category_list(fig, key) + '</div>'
+                + divs[key]
+                + "</div>"
+                + _chart_category_list(fig, key)
+                + "</div>"
             )
         include_plotlyjs = False
     return divs
@@ -1342,7 +1358,10 @@ def _chart_category_list(fig: go.Figure, key: str) -> str:
                 share = f" · {percentage:.1%}"
             rows.append((index, label, color, value + share))
     else:
-        rows = [(index, trace.name, trace.marker.color, "") for index, trace in enumerate(fig.data)]
+        rows = [
+            (index, trace.name, trace.marker.color, "")
+            for index, trace in enumerate(fig.data)
+        ]
     items = "".join(
         f'<li><button type="button" class="category-toggle" aria-pressed="true" '
         f'aria-controls="{plot_id}" data-category-index="{index}" '
@@ -1350,7 +1369,7 @@ def _chart_category_list(fig: go.Figure, key: str) -> str:
         f'data-category-kind="{"pie" if pie else "trace"}">'
         f'<span class="category-swatch" style="background:{html.escape(str(color), quote=True)}" aria-hidden="true"></span>'
         f'<span class="category-name">{html.escape(str(label))}</span>'
-        f'<strong>{html.escape(value)}</strong></button></li>'
+        f"<strong>{html.escape(value)}</strong></button></li>"
         for index, label, color, value in rows
     )
     return f'<ul class="chart-category-list" aria-label="Chart categories">{items}</ul>'
@@ -1808,17 +1827,28 @@ def _table_html(exceptions: pd.DataFrame) -> str:
 
 
 def _content_security_policy(markup: str) -> str:
-    scripts = re.findall(r"<script\b[^>]*>(.*?)</script(?=[\t\n\f\r />])[^>]*>", markup, re.DOTALL | re.IGNORECASE)
+    scripts = re.findall(
+        r"<script\b[^>]*>(.*?)</script(?=[\t\n\f\r />])[^>]*>",
+        markup,
+        re.DOTALL | re.IGNORECASE,
+    )
     # Browsers normalize line endings before checking inline script hashes.
     hashes = [
-        "'sha256-" + base64.b64encode(hashlib.sha256(
-            script.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
-        ).digest()).decode("ascii") + "'"
+        "'sha256-"
+        + base64.b64encode(
+            hashlib.sha256(
+                script.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+            ).digest()
+        ).decode("ascii")
+        + "'"
         for script in scripts
     ]
-    return ("default-src 'none'; script-src " + " ".join(hashes)
-            + "; style-src 'unsafe-inline'; img-src data: blob:; "
-            "object-src 'none'; base-uri 'none'; form-action 'none'")
+    return (
+        "default-src 'none'; script-src "
+        + " ".join(hashes)
+        + "; style-src 'unsafe-inline'; img-src data: blob:; "
+        "object-src 'none'; base-uri 'none'; form-action 'none'"
+    )
 
 
 def render_dashboard(
@@ -1839,10 +1869,33 @@ def render_dashboard(
     )
     print_script = export_script(_json_for_script)
     # Hash known script fragments before any report tables are rendered.
-    policy = html.escape(_content_security_policy(
-        "".join(divs.values()) + matrix_card + TOOLTIP_SCRIPT + NAVIGATION_SCRIPT
-        + CATEGORY_SCRIPT + print_script
-    ), quote=True)
+    policy = html.escape(
+        _content_security_policy(
+            "".join(divs.values())
+            + matrix_card
+            + TOOLTIP_SCRIPT
+            + NAVIGATION_SCRIPT
+            + CATEGORY_SCRIPT
+            + print_script
+        ),
+        quote=True,
+    )
+    matrix_card = _age_idle_action_matrix_card(
+        divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"]
+    )
+    print_script = export_script(_json_for_script)
+    # Hash known script fragments before any report tables are rendered.
+    policy = html.escape(
+        _content_security_policy(
+            "".join(divs.values())
+            + matrix_card
+            + TOOLTIP_SCRIPT
+            + NAVIGATION_SCRIPT
+            + CATEGORY_SCRIPT
+            + print_script
+        ),
+        quote=True,
+    )
     shown_exceptions = len(analytics.exceptions)
     page_copy = content.PAGE
     sections = content.SECTION_CONTENT
@@ -1856,26 +1909,45 @@ def render_dashboard(
         shown=shown_exceptions,
         total=len(analytics.exceptions),
     )
-    main_tabs = tab_bar("sections", "Dashboard sections", (
-        ("operations-panel", sections["operations"].title),
-        ("evaluation-types-panel", sections["evaluation_types"].title),
-        ("trends-panel", sections["trends"].title),
-        ("staff-panel", sections["staff"].title),
-        ("exceptions-panel", sections["exceptions"].title),
-    ))
-    workload_tabs = tab_bar("operations", sections["operations"].title, (
-        ("case-metrics-panel", "Case Metrics"),
-        ("aging-panel", content.CHART_CONTENT["workflow_aging_matrix"].title),
-        ("risk-panel", content.CHART_CONTENT["age_idle_action_matrix"].title),
-    ))
-    staff_tabs = tab_bar("staff", sections["staff"].title, (
-        ("staff-volume-panel", content.CHART_CONTENT["submitted_by_workload"].title),
-        ("staff-date-panel", content.CHART_CONTENT["submitted_by_date_activity"].title),
-    ))
+    main_tabs = tab_bar(
+        "sections",
+        "Dashboard sections",
+        (
+            ("operations-panel", sections["operations"].title),
+            ("evaluation-types-panel", sections["evaluation_types"].title),
+            ("trends-panel", sections["trends"].title),
+            ("staff-panel", sections["staff"].title),
+            ("exceptions-panel", sections["exceptions"].title),
+        ),
+    )
+    workload_tabs = tab_bar(
+        "operations",
+        sections["operations"].title,
+        (
+            ("case-metrics-panel", "Case Metrics"),
+            ("aging-panel", content.CHART_CONTENT["workflow_aging_matrix"].title),
+            ("risk-panel", content.CHART_CONTENT["age_idle_action_matrix"].title),
+        ),
+    )
+    staff_tabs = tab_bar(
+        "staff",
+        sections["staff"].title,
+        (
+            (
+                "staff-volume-panel",
+                content.CHART_CONTENT["submitted_by_workload"].title,
+            ),
+            (
+                "staff-date-panel",
+                content.CHART_CONTENT["submitted_by_date_activity"].title,
+            ),
+        ),
+    )
     html_text = f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="{policy}">
   <meta http-equiv="Content-Security-Policy" content="{policy}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(analytics.dashboard_title)}</title>
