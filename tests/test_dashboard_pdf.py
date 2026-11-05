@@ -13,7 +13,7 @@ from playwright.sync_api import expect, sync_playwright
 from workflow_dashboard.analytics import build_analytics
 from workflow_dashboard.config import DashboardConfig
 from workflow_dashboard.dashboard_content import PAGE
-from workflow_dashboard.dashboard_html import render_dashboard
+from workflow_dashboard.dashboard_html import _content_security_policy, render_dashboard
 
 from .test_analytics_cohorts import GENERATED_AT, sample_cases
 from .test_outputs import _history_frames
@@ -56,6 +56,35 @@ def test_pdf_action_is_embedded_without_creating_a_pdf(tmp_path):
     assert set(path.suffix for path in tmp_path.iterdir()) == {".html"}
 
 
+@pytest.mark.parametrize(
+    "end_tag",
+    [
+        "</script>",
+        "</SCRIPT>",
+        "</script >",
+        "</script\t\n bar>",
+        '</script foo="bar">',
+        "</script/>",
+    ],
+)
+def test_report_policy_hashes_browser_accepted_script_end_tags(end_tag):
+    script = 'const value = "</scripture></script!>";\r\nconst next = 1;\r'
+    markup = "<scripture>not a script</scripture><script>" + script + end_tag
+    policy = _content_security_policy(markup)
+    directives = {
+        parts[0]: parts[1:]
+        for directive in policy.split(";")
+        if (parts := directive.split())
+    }
+    normalized = script.replace("\r\n", "\n").replace("\r", "\n")
+    expected = (
+        "'sha256-"
+        + base64.b64encode(hashlib.sha256(normalized.encode()).digest()).decode()
+        + "'"
+    )
+    assert directives["script-src"] == [expected]
+
+
 def test_report_policy_authorizes_only_the_embedded_scripts(tmp_path):
     class ReportParser(HTMLParser):
         def __init__(self):
@@ -84,28 +113,46 @@ def test_report_policy_authorizes_only_the_embedded_scripts(tmp_path):
 
     report = ReportParser()
     report.feed(_report(tmp_path / "report.html").read_text(encoding="utf-8"))
-    directives = {parts[0]: parts[1:] for directive in report.policy.split(";") if (parts := directive.split())}
-    expected = {"'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
-                for script in report.scripts}
+    directives = {
+        parts[0]: parts[1:]
+        for directive in report.policy.split(";")
+        if (parts := directive.split())
+    }
+    expected = {
+        "'sha256-"
+        + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+        + "'"
+        for script in report.scripts
+    }
     assert set(directives["script-src"]) == expected
     for name in ("default-src", "object-src", "base-uri", "form-action"):
         assert directives[name] == ["'none'"]
 
 
-def test_report_policy_blocks_added_scripts_and_connections(page, tmp_path, monkeypatch):
+def test_report_policy_blocks_added_scripts_and_connections(
+    page, tmp_path, monkeypatch
+):
     from workflow_dashboard import dashboard_html
 
     table_html = dashboard_html._table_html
-    monkeypatch.setattr(dashboard_html, "_table_html", lambda table:
-        table_html(table) + '<script>window.renderInjectionRan = true;</script>')
+    monkeypatch.setattr(
+        dashboard_html,
+        "_table_html",
+        lambda table: table_html(table)
+        + "<script>window.renderInjectionRan = true;</script>",
+    )
     page.add_init_script("""window.cspViolations = [];
         document.addEventListener('securitypolicyviolation', event => {
           window.cspViolations.push(event.effectiveDirective);
         });""")
     path = _report(tmp_path / "report.html")
     markup = path.read_text(encoding="utf-8")
-    path.write_text(markup.replace("</body>",
-        '<script>window.injectedScriptRan = true;</script></body>'), encoding="utf-8")
+    path.write_text(
+        markup.replace(
+            "</body>", "<script>window.injectedScriptRan = true;</script></body>"
+        ),
+        encoding="utf-8",
+    )
     _open(page, path)
     page.wait_for_function("() => window.cspViolations.includes('script-src-elem')")
     assert page.evaluate("window.injectedScriptRan === undefined")
@@ -302,9 +349,13 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
         assert page.locator("#problem-rows-table tbody tr").count() == 120
         assert page.locator("#age-idle-action-rows tr").count() == 120
     if scenario != "empty":
-        assert page.locator('.risk-chart-frame').evaluate(
-            'e => getComputedStyle(e).display') == 'inline-block'
-        assert page.locator('.risk-chart-frame').bounding_box()['height'] < 600
+        assert (
+            page.locator(".risk-chart-frame").evaluate(
+                "e => getComputedStyle(e).display"
+            )
+            == "inline-block"
+        )
+        assert page.locator(".risk-chart-frame").bounding_box()["height"] < 600
     pdf = page.pdf(
         path=str(artifact_dir / f"{scenario}.pdf"),
         prefer_css_page_size=True,
