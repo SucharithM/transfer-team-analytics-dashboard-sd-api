@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import json
 import math
+import re
 import textwrap
 from pathlib import Path
 
@@ -14,6 +16,9 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 
 from . import dashboard_content as content
+from .dashboard_navigation import NAVIGATION_SCRIPT, NAVIGATION_STYLES, tab_bar
+from .dashboard_tooltips import TOOLTIP_SCRIPT, TOOLTIP_STYLES
+from .dashboard_print import PRINT_STYLES, export_script
 from .analytics import (
     AGING_BAND_LABELS,
     AnalyticsBundle,
@@ -102,7 +107,11 @@ def _category_color(
         if key in STAFF_COLORS:
             return STAFF_COLORS[key]
         staff_colors = {
-            _category_key(member): ("#F48FB1" if index == 4 else CATEGORY_COLORWAY[index % len(CATEGORY_COLORWAY)])
+            _category_key(member): (
+                "#F48FB1"
+                if index == 4
+                else CATEGORY_COLORWAY[index % len(CATEGORY_COLORWAY)]
+            )
             for index, member in enumerate(category_order)
         }
         return staff_colors.get(key, _stable_fallback_color(value))
@@ -157,8 +166,8 @@ def _empty_figure(title: str) -> go.Figure:
         ],
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
-        height=320,
-        margin=dict(l=32, r=20, t=20, b=34),
+        height=240,
+        margin=dict(l=32, r=20, t=15, b=26),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=SURFACE_MUTED,
     )
@@ -175,8 +184,8 @@ def _base_layout(fig: go.Figure, title: str, *, height: int = 340) -> go.Figure:
         ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor=SURFACE_MUTED,
-        margin=dict(l=150, r=42, t=20, b=58),
-        height=height,
+        margin=dict(l=150, r=42, t=15, b=44),
+        height=math.ceil(height * 0.75),
         hoverlabel=dict(
             bgcolor=TEXT, bordercolor=TEXT, font=dict(color="#ffffff", size=12)
         ),
@@ -311,11 +320,7 @@ def _donut_chart(
     displayed_center = (
         center_text if center_text is not None else f"{int(values.sum()):,}"
     )
-    value_template = (
-        f"%{{value:.1f}}{value_suffix}"
-        if one_decimal
-        else f"%{{value:,}}{value_suffix}"
-    )
+    value_template = "%{text}" if one_decimal else f"%{{value:,}}{value_suffix}"
     texttemplate = (
         value_template + "<br>%{percent:.1%}" if show_percent else value_template
     )
@@ -323,9 +328,8 @@ def _donut_chart(
     if show_percent:
         hovertemplate += "<br>" + content.CHART_LABELS.share + ": %{percent:.1%}"
     hovertemplate += "<extra></extra>"
-    extra_categories = max(0, len(ordered) - 3)
-    height = 380 + 24 * extra_categories
-    bottom_margin = 92 + 24 * extra_categories
+    height = 380
+    bottom_margin = 10
     colors = _category_colors(
         raw_labels,
         color_dimension,
@@ -336,6 +340,14 @@ def _donut_chart(
         go.Pie(
             labels=wrapped_labels,
             values=values,
+            text=(
+                [
+                    format_one_decimal(value, suffix=value_suffix, missing="—")
+                    for value in ordered[value_col]
+                ]
+                if one_decimal
+                else None
+            ),
             customdata=raw_labels,
             hole=0.58,
             sort=False,
@@ -353,20 +365,33 @@ def _donut_chart(
     )
     _base_layout(fig, title, height=height)
     fig.update_layout(
-        margin=dict(l=24, r=24, t=20, b=bottom_margin),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.08,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=12, color=MUTED),
-        ),
+        margin=dict(l=24, r=24, t=15, b=bottom_margin),
+        height=height,
+        showlegend=False,
+        meta={
+            "category_values": [
+                (
+                    "—"
+                    if pd.isna(value)
+                    else (
+                        format_one_decimal(value, suffix=value_suffix)
+                        if one_decimal
+                        else f"{int(value):,}"
+                    )
+                )
+                for value in pd.to_numeric(ordered[value_col], errors="coerce")
+            ],
+            "show_percent": show_percent,
+        },
         uniformtext=dict(minsize=11, mode="hide"),
         annotations=[
             dict(
-                text=f"<b>{displayed_center}</b>",
+                text=f"<b>{displayed_center}</b>"
+                + (
+                    "<br><span style='font-size:13px'>Overall median</span>"
+                    if one_decimal
+                    else ""
+                ),
                 x=0.5,
                 y=0.5,
                 xref="paper",
@@ -477,7 +502,7 @@ def _line_chart(
         )
     )
     _base_layout(fig, title, height=310)
-    fig.update_layout(margin=dict(l=72, r=36, t=20, b=58))
+    fig.update_layout(margin=dict(l=72, r=36, t=15, b=44))
     fig.update_xaxes(title=content.CHART_LABELS.date)
     if len(history) == 1:
         day = local_run_times.dt.tz_localize(None).dt.normalize().iloc[0]
@@ -568,7 +593,7 @@ def _daily_closures_chart(table: pd.DataFrame) -> go.Figure:
     )
     _base_layout(fig, title, height=380)
     fig.update_layout(
-        margin=dict(l=72, r=36, t=70, b=76),
+        margin=dict(l=72, r=36, t=53, b=57),
         bargap=0.15,
         legend=dict(y=1.08, yanchor="bottom"),
     )
@@ -631,7 +656,7 @@ def _recent_closures_chart(
     )
     _base_layout(fig, chart_copy.title, height=330)
     fig.update_layout(
-        margin=dict(l=72, r=36, t=20, b=58),
+        margin=dict(l=72, r=36, t=15, b=44),
         showlegend=False,
     )
     fig.update_xaxes(title=content.CHART_LABELS.date)
@@ -707,7 +732,7 @@ def _closed_by_month_trend(table: pd.DataFrame) -> go.Figure:
     )
     _base_layout(fig, title, height=330)
     fig.update_layout(
-        margin=dict(l=72, r=36, t=20, b=76),
+        margin=dict(l=72, r=36, t=15, b=57),
         showlegend=False,
     )
     fig.update_xaxes(
@@ -887,7 +912,7 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
     height = max(400, 150 + 45 * len(steps))
     _base_layout(fig, title, height=height)
     fig.update_layout(
-        margin=dict(l=250, r=92, t=54, b=34),
+        margin=dict(l=250, r=92, t=41, b=26),
         showlegend=False,
     )
     fig.update_xaxes(
@@ -1093,26 +1118,6 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
             layer="above",
         )
 
-    counts = table["action_bucket"].value_counts().to_dict()
-    annotation_positions = {
-        "young_active": (backlog_x / 2, stale_y / 2),
-        "young_stale": (backlog_x / 2, stale_y + (y_max - stale_y) / 2),
-        "backlog_active": (backlog_x + (x_max - backlog_x) / 2, stale_y / 2),
-        "backlog_stale": (
-            backlog_x + (x_max - backlog_x) / 2,
-            stale_y + (y_max - stale_y) / 2,
-        ),
-    }
-    for bucket in bucket_labels:
-        x_position, y_position = annotation_positions[bucket]
-        fig.add_annotation(
-            x=x_position,
-            y=y_position,
-            text=f"<b>{bucket_labels[bucket]}</b><br>{int(counts.get(bucket, 0)):,}",
-            showarrow=False,
-            font=dict(color=MUTED, size=12),
-            opacity=0.9,
-        )
     fig.add_annotation(
         x=backlog_x,
         y=1.07,
@@ -1147,7 +1152,9 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
 
     _base_layout(fig, title, height=620)
     fig.update_layout(
-        margin=dict(l=82, r=36, t=72, b=128),
+        height=620,
+        showlegend=False,
+        margin=dict(l=82, r=36, t=70, b=72),
         legend=dict(
             orientation="h",
             yanchor="top",
@@ -1277,6 +1284,10 @@ def _plot_divs(
             include_plotlyjs=include_plotlyjs,
             full_html=False,
             div_id=f"plot-{key.replace('_', '-')}",
+            post_script=(
+                "document.getElementById('{plot_id}').dataset.pdfReady = 'true';"
+                "document.dispatchEvent(new Event('dashboard-chart-ready'));"
+            ),
             config={
                 "responsive": True,
                 "displaylogo": False,
@@ -1284,8 +1295,84 @@ def _plot_divs(
                 "modeBarButtonsToRemove": ["lasso2d", "select2d"],
             },
         )
+        if (
+            key in {"in_the_works_by_step", "owner_workload", "aging_by_step"}
+            and fig.data
+        ):
+            divs[key] = (
+                '<div class="donut-layout"><div class="donut-plot">'
+                + divs[key]
+                + "</div>"
+                + _chart_category_list(fig, key)
+                + "</div>"
+            )
+        elif key == "age_idle_action_matrix" and fig.data:
+            divs[key] = (
+                '<div class="risk-chart-frame"><div class="risk-plot-scroll" tabindex="0" '
+                'role="region" aria-label="Risk plot; scroll horizontally on narrow screens">'
+                + divs[key]
+                + "</div>"
+                + _chart_category_list(fig, key)
+                + "</div>"
+            )
         include_plotlyjs = False
     return divs
+
+
+CATEGORY_SCRIPT = """
+<script>
+document.addEventListener('click', async event => {
+  const button = event.target.closest('.category-toggle');
+  if (!button) return;
+  const plot = document.getElementById(button.getAttribute('aria-controls'));
+  const visible = button.getAttribute('aria-pressed') === 'true';
+  button.setAttribute('aria-pressed', String(!visible));
+  if (button.dataset.categoryKind === 'pie') {
+    const hidden = new Set(plot.layout.hiddenlabels || []);
+    if (visible) hidden.add(button.dataset.categoryLabel);
+    else hidden.delete(button.dataset.categoryLabel);
+    await Plotly.relayout(plot, {hiddenlabels: Array.from(hidden)});
+  } else {
+    await Plotly.restyle(plot, {visible: visible ? 'legendonly' : true}, [Number(button.dataset.categoryIndex)]);
+  }
+});
+</script>
+"""
+
+
+def _chart_category_list(fig: go.Figure, key: str) -> str:
+    """Accessible, printable legends derived from the rendered traces."""
+    plot_id = f"plot-{key.replace('_', '-')}"
+    pie = fig.data[0].type == "pie"
+    rows = []
+    if pie:
+        trace = fig.data[0]
+        total = sum(trace.values)
+        categories = zip(
+            trace.customdata, trace.marker.colors, fig.layout.meta["category_values"]
+        )
+        for index, (label, color, value) in enumerate(categories):
+            share = ""
+            if fig.layout.meta["show_percent"]:
+                percentage = trace.values[index] / total if total else 0
+                share = f" · {percentage:.1%}"
+            rows.append((index, label, color, value + share))
+    else:
+        rows = [
+            (index, trace.name, trace.marker.color, "")
+            for index, trace in enumerate(fig.data)
+        ]
+    items = "".join(
+        f'<li><button type="button" class="category-toggle" aria-pressed="true" '
+        f'aria-controls="{plot_id}" data-category-index="{index}" '
+        f'data-category-label="{html.escape(str(fig.data[0].labels[index]) if pie else str(label), quote=True)}" '
+        f'data-category-kind="{"pie" if pie else "trace"}">'
+        f'<span class="category-swatch" style="background:{html.escape(str(color), quote=True)}" aria-hidden="true"></span>'
+        f'<span class="category-name">{html.escape(str(label))}</span>'
+        f"<strong>{html.escape(value)}</strong></button></li>"
+        for index, label, color, value in rows
+    )
+    return f'<ul class="chart-category-list" aria-label="Chart categories">{items}</ul>'
 
 
 def _help_control(label: str, help_text: str, *, help_id: str) -> str:
@@ -1412,7 +1499,9 @@ def _age_idle_action_matrix_card(
         else " · complete timing coverage"
     )
     counts = table["action_bucket"].value_counts().to_dict()
-    bucket_labels = content.action_bucket_labels(float(table.attrs.get("backlog_age_days", 7)))
+    bucket_labels = content.action_bucket_labels(
+        float(table.attrs.get("backlog_age_days", 7))
+    )
     buttons = []
     for bucket in bucket_labels:
         count = int(counts.get(bucket, 0))
@@ -1439,12 +1528,12 @@ def _age_idle_action_matrix_card(
             "step_name": str(row["step_name"]),
             "age_days": float(row["age_days"]),
             "idle_days": float(row["idle_days"]),
+            "age_label": format_one_decimal(row["age_days"]),
+            "idle_label": format_one_decimal(row["idle_days"]),
             "last_activity_at": last_activity_label,
             "action_bucket": str(row["action_bucket"]),
         }
-        for (_, row), last_activity_label in zip(
-            table.iterrows(), last_activity_labels
-        )
+        for (_, row), last_activity_label in zip(table.iterrows(), last_activity_labels)
     ]
     matrix_data = _json_for_script(rows)
     return f"""
@@ -1541,8 +1630,8 @@ def _age_idle_action_matrix_card(
                 const row = document.createElement("tr");
                 appendCell(row, record.record_id);
                 appendCell(row, record.step_name);
-                appendCell(row, `${{record.age_days.toFixed(1)}} days`);
-                appendCell(row, `${{record.idle_days.toFixed(1)}} days`);
+                appendCell(row, `${{record.age_label}} days`);
+                appendCell(row, `${{record.idle_label}} days`);
                 appendCell(row, record.last_activity_at);
                 body.appendChild(row);
               }});
@@ -1619,8 +1708,7 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
     }
     if summary.empty or not required_columns.issubset(summary.columns):
         return (
-            '<div class="empty-table">'
-            f"{html.escape(table_copy.empty_message)}</div>"
+            '<div class="empty-table">' f"{html.escape(table_copy.empty_message)}</div>"
         )
 
     display_columns = [
@@ -1634,10 +1722,7 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
         "median_completion_summary",
     ]
     headers = "".join(
-        (
-            '<th scope="col">'
-            f"{html.escape(table_copy.header_labels[column])}</th>"
-        )
+        ('<th scope="col">' f"{html.escape(table_copy.header_labels[column])}</th>")
         for column in display_columns
     )
     rows: list[str] = []
@@ -1647,9 +1732,11 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
         completed_count = int(row["completed_count"])
         backlog_count = int(row["backlog_count"])
         completion_rate = format_one_decimal(
-            float(row["completion_rate"]) * 100
-            if pd.notna(row["completion_rate"])
-            else None,
+            (
+                float(row["completion_rate"]) * 100
+                if pd.notna(row["completion_rate"])
+                else None
+            ),
             suffix="%",
             missing="—",
         )
@@ -1673,14 +1760,8 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
             f'<td class="numeric-cell">{completed_count:,}</td>',
             f'<td class="numeric-cell">{completion_rate}</td>',
             f'<td class="numeric-cell">{backlog_count:,}</td>',
-            (
-                '<td class="metric-cell">'
-                f"<strong>{median_open_age}</strong></td>"
-            ),
-            (
-                '<td class="metric-cell">'
-                f"<strong>{median_completion}</strong></td>"
-            ),
+            ('<td class="metric-cell">' f"<strong>{median_open_age}</strong></td>"),
+            ('<td class="metric-cell">' f"<strong>{median_completion}</strong></td>"),
         ]
         rows.append(f"<tr>{''.join(cells)}</tr>")
     return (
@@ -1713,15 +1794,12 @@ def _table_html(exceptions: pd.DataFrame) -> str:
     ].copy()
     if "age_days" in table.columns:
         table["_age_sort"] = pd.to_numeric(table["age_days"], errors="coerce")
-        table = (
-            table.sort_values(
-                "_age_sort",
-                ascending=False,
-                na_position="last",
-                kind="stable",
-            )
-            .drop(columns="_age_sort")
-        )
+        table = table.sort_values(
+            "_age_sort",
+            ascending=False,
+            na_position="last",
+            kind="stable",
+        ).drop(columns="_age_sort")
     for date_col in ("submitted_at", "last_activity_at"):
         if date_col in table.columns:
             table[date_col] = (
@@ -1739,13 +1817,38 @@ def _table_html(exceptions: pd.DataFrame) -> str:
         for column in table.columns
     )
     rows = []
-    for _, row in table.head(100).iterrows():
+    for _, row in table.iterrows():
         cells = "".join(
             f"<td>{html.escape('' if pd.isna(value) else str(value))}</td>"
             for value in row
         )
         rows.append(f"<tr>{cells}</tr>")
     return f'<table class="data-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
+
+
+def _content_security_policy(markup: str) -> str:
+    scripts = re.findall(
+        r"<script\b[^>]*>(.*?)</script(?=[\t\n\f\r />])[^>]*>",
+        markup,
+        re.DOTALL | re.IGNORECASE,
+    )
+    # Browsers normalize line endings before checking inline script hashes.
+    hashes = [
+        "'sha256-"
+        + base64.b64encode(
+            hashlib.sha256(
+                script.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+            ).digest()
+        ).decode("ascii")
+        + "'"
+        for script in scripts
+    ]
+    return (
+        "default-src 'none'; script-src "
+        + " ".join(hashes)
+        + "; style-src 'unsafe-inline'; img-src data: blob:; "
+        "object-src 'none'; base-uri 'none'; form-action 'none'"
+    )
 
 
 def render_dashboard(
@@ -1761,7 +1864,39 @@ def render_dashboard(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     generated = _format_generated_at(analytics.generated_at)
     divs = _plot_divs(analytics, history)
-    shown_exceptions = min(len(analytics.exceptions), 100)
+    matrix_card = _age_idle_action_matrix_card(
+        divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"]
+    )
+    print_script = export_script(_json_for_script)
+    # Hash known script fragments before any report tables are rendered.
+    policy = html.escape(
+        _content_security_policy(
+            "".join(divs.values())
+            + matrix_card
+            + TOOLTIP_SCRIPT
+            + NAVIGATION_SCRIPT
+            + CATEGORY_SCRIPT
+            + print_script
+        ),
+        quote=True,
+    )
+    matrix_card = _age_idle_action_matrix_card(
+        divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"]
+    )
+    print_script = export_script(_json_for_script)
+    # Hash known script fragments before any report tables are rendered.
+    policy = html.escape(
+        _content_security_policy(
+            "".join(divs.values())
+            + matrix_card
+            + TOOLTIP_SCRIPT
+            + NAVIGATION_SCRIPT
+            + CATEGORY_SCRIPT
+            + print_script
+        ),
+        quote=True,
+    )
+    shown_exceptions = len(analytics.exceptions)
     page_copy = content.PAGE
     sections = content.SECTION_CONTENT
     evaluation_table_copy = content.EVALUATION_TYPE_TABLE
@@ -1774,10 +1909,46 @@ def render_dashboard(
         shown=shown_exceptions,
         total=len(analytics.exceptions),
     )
+    main_tabs = tab_bar(
+        "sections",
+        "Dashboard sections",
+        (
+            ("operations-panel", sections["operations"].title),
+            ("evaluation-types-panel", sections["evaluation_types"].title),
+            ("trends-panel", sections["trends"].title),
+            ("staff-panel", sections["staff"].title),
+            ("exceptions-panel", sections["exceptions"].title),
+        ),
+    )
+    workload_tabs = tab_bar(
+        "operations",
+        sections["operations"].title,
+        (
+            ("case-metrics-panel", "Case Metrics"),
+            ("aging-panel", content.CHART_CONTENT["workflow_aging_matrix"].title),
+            ("risk-panel", content.CHART_CONTENT["age_idle_action_matrix"].title),
+        ),
+    )
+    staff_tabs = tab_bar(
+        "staff",
+        sections["staff"].title,
+        (
+            (
+                "staff-volume-panel",
+                content.CHART_CONTENT["submitted_by_workload"].title,
+            ),
+            (
+                "staff-date-panel",
+                content.CHART_CONTENT["submitted_by_date_activity"].title,
+            ),
+        ),
+    )
     html_text = f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="{policy}">
+  <meta http-equiv="Content-Security-Policy" content="{policy}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(analytics.dashboard_title)}</title>
   <style>
@@ -1823,19 +1994,42 @@ def render_dashboard(
       padding: 24px 28px;
     }}
     .header-top {{
-      align-items: flex-start;
+      align-items: center;
       display: flex;
-      gap: 20px;
+      flex-wrap: wrap;
+      gap: 8px 20px;
       justify-content: space-between;
     }}
-    .header-meta {{
-      align-items: flex-end;
+    .header-utility-row {{
+      align-items: center;
+      border-top: 1px solid var(--border);
       display: flex;
-      flex: 0 0 auto;
-      flex-direction: column;
-      gap: 9px;
-      max-width: 420px;
-      text-align: right;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      justify-content: space-between;
+      margin-top: 18px;
+      padding-top: 12px;
+    }}
+    .dashboard-header h1 {{ margin-top: 10px; }}
+    .header-top .eyebrow {{ margin-bottom: 0; }}
+    .dashboard-header .generated-at {{
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.4;
+      margin: 0;
+      padding-left: 18px;
+      position: relative;
+    }}
+    .generated-at::before {{
+      background: var(--primary);
+      border-radius: 50%;
+      content: "";
+      height: 8px;
+      left: 0;
+      position: absolute;
+      top: 0.45em;
+      width: 8px;
     }}
     .dashboard-header .authorship-credit {{
       color: var(--muted);
@@ -1872,19 +2066,10 @@ def render_dashboard(
     }}
     .dashboard-header p {{
       color: var(--muted);
-      margin: 12px 0 0;
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 18px 0 0;
       max-width: 980px;
-    }}
-    .date-badge {{
-      background: var(--primary-soft);
-      border: 1px solid #cbdcff;
-      border-radius: 999px;
-      color: var(--primary-dark);
-      flex: 0 0 auto;
-      font-size: 13px;
-      font-weight: 700;
-      padding: 7px 13px;
-      white-space: nowrap;
     }}
     .dashboard-section {{ margin-top: 30px; }}
     .section-heading {{ margin-bottom: 14px; }}
@@ -2300,6 +2485,22 @@ def render_dashboard(
       color: var(--muted);
       padding: 22px;
     }}
+    .donut-layout {{ display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: center; gap: 24px; }}
+    .donut-plot {{ min-width: 0; }}
+    .chart-category-list {{ list-style: none; padding: 0; margin: 12px 0; }}
+    .category-toggle {{ display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; min-height: 44px; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font: inherit; font-size: 14px; cursor: pointer; }}
+    .category-toggle:hover {{ background: var(--surface-muted); }}
+    .category-toggle:focus-visible {{ outline: 3px solid var(--primary); }}
+    .category-toggle[aria-pressed="false"] .category-name {{ text-decoration: line-through; opacity: .65; }}
+    .category-name {{ overflow-wrap: anywhere; }}
+    .category-swatch {{ width: 12px; height: 12px; border-radius: 2px; }}
+    .risk-plot-scroll {{ overflow-x: auto; }}
+    .current-open-grid .action-matrix-card {{ overflow: visible; min-width: 0; }}
+    .action-matrix-card .chart-category-list {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }}
+    @media (max-width: 719px) {{
+      .donut-layout {{ grid-template-columns: minmax(0, 1fr); gap: 4px; }}
+      .donut-plot {{ width: 100%; max-width: 420px; margin: auto; }}
+    }}
     .page-footer {{
       display: flex;
       justify-content: flex-end;
@@ -2323,15 +2524,9 @@ def render_dashboard(
       .trend-grid .chart-container:last-child:nth-child(odd) {{ grid-column: auto; }}
     }}
     @media (max-width: 720px) {{
-      .header-top {{ flex-direction: column; }}
-      .header-meta {{
-        align-items: flex-start;
-        max-width: none;
-        text-align: left;
-        width: 100%;
-      }}
+      .header-top {{ align-items: flex-start; flex-direction: column; }}
+      .header-utility-row {{ align-items: flex-start; }}
       .dashboard-header {{ padding: 21px 22px; }}
-      .date-badge {{ white-space: normal; }}
       .kpi-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .legend-grid {{ grid-template-columns: 1fr; }}
       .action-matrix-controls {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
@@ -2359,19 +2554,34 @@ def render_dashboard(
     @media (prefers-reduced-motion: reduce) {{
       html {{ scroll-behavior: auto; }}
     }}
+{NAVIGATION_STYLES}
+{PRINT_STYLES}
+{TOOLTIP_STYLES}
   </style>
 </head>
 <body>
   <main class="dashboard-shell" id="dashboard-top">
     <header class="dashboard-header">
       <div class="header-top">
-        <div>
-          <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
-          <h1>{html.escape(analytics.dashboard_title)} <span class="prototype-label">{html.escape(page_copy.prototype_label)}</span></h1>
-        </div>
-        <div class="header-meta">
-          <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
-          <div class="date-badge">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</div>
+        <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
+        <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
+      </div>
+      <h1>{html.escape(analytics.dashboard_title)} <span class="prototype-label">{html.escape(page_copy.prototype_label)}</span></h1>
+      <div class="header-utility-row">
+        <p class="generated-at">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</p>
+        <div class="pdf-export">
+          <p class="pdf-export-status" id="pdf-export-status" role="status" aria-live="polite"></p>
+          <div class="pdf-export-control">
+            <button type="button" id="save-pdf" aria-describedby="pdf-export-hint">
+              <svg class="pdf-printer-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="7" rx="1"/><path d="M18 12h.01"/>
+              </svg>
+              <span class="pdf-spinner" aria-hidden="true"></span>
+              <span class="pdf-button-label">{html.escape(page_copy.save_pdf)}</span>
+            </button>
+            <span id="pdf-export-hint" class="pdf-export-hint" role="tooltip">{html.escape(page_copy.save_pdf_hint)}</span>
+          </div>
         </div>
       </div>
 {intro_html}
@@ -2387,23 +2597,36 @@ def render_dashboard(
       <div class="kpi-grid">{_kpi_html(analytics)}</div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="operations-title">
+    <div class="dashboard-tabs" id="dashboard-tabs">
+    {main_tabs}
+    <section class="dashboard-section" id="operations-panel" data-tab-panel="sections" aria-labelledby="operations-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["operations"].eyebrow)}</span>
         <h2 class="section-title" id="operations-title">{html.escape(sections["operations"].title)}</h2>
         <p class="section-copy">{html.escape(sections["operations"].description or "")}</p>
       </div>
-      <div class="current-open-grid">
+      {workload_tabs}
+      <div id="case-metrics-panel" data-tab-panel="operations">
+      <div class="case-metrics-grid">
         {_chart_card(divs["in_the_works_by_step"], "in_the_works_by_step", help_id="in-the-works-by-step-help", context=analytics.presentation)}
         {_chart_card(divs["status_mix"], "status_mix", help_id="status-mix-help", context=analytics.presentation)}
         {_chart_card(divs["owner_workload"], "owner_workload", help_id="owner-workload-help", context=analytics.presentation)}
+      </div>
+      </div>
+      <div id="aging-panel" data-tab-panel="operations">
+      <div class="aging-grid">
         {_chart_card(divs["aging_by_step"], "aging_by_step", help_id="aging-by-step-help", context=analytics.presentation)}
         {_chart_card(divs["workflow_aging_matrix"], "workflow_aging_matrix", help_id="workflow-aging-matrix-help", extra_class="chart-container-wide", context=analytics.presentation)}
-        {_age_idle_action_matrix_card(divs["age_idle_action_matrix"], analytics.chart_tables["age_idle_action_matrix"])}
+      </div>
+      </div>
+      <div id="risk-panel" data-tab-panel="operations">
+      <div class="current-open-grid">
+        {matrix_card}
+      </div>
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="evaluation-types-title">
+    <section class="dashboard-section" id="evaluation-types-panel" data-tab-panel="sections" aria-labelledby="evaluation-types-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["evaluation_types"].eyebrow)}</span>
         <h2 class="section-title" id="evaluation-types-title">{html.escape(sections["evaluation_types"].title)}</h2>
@@ -2422,7 +2645,7 @@ def render_dashboard(
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="trends-title">
+    <section class="dashboard-section" id="trends-panel" data-tab-panel="sections" aria-labelledby="trends-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["trends"].eyebrow)}</span>
         <h2 class="section-title" id="trends-title">{html.escape(sections["trends"].title)}</h2>
@@ -2437,19 +2660,22 @@ def render_dashboard(
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="staff-title">
+    <section class="dashboard-section" id="staff-panel" data-tab-panel="sections" aria-labelledby="staff-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["staff"].eyebrow)}</span>
         <h2 class="section-title" id="staff-title">{html.escape(sections["staff"].title)}</h2>
         <p class="section-copy">{html.escape(sections["staff"].description or "")}</p>
       </div>
-      <div class="chart-stack">
+      {staff_tabs}
+      <div id="staff-volume-panel" data-tab-panel="staff">
         {_chart_card(divs["submitted_by_workload"], "submitted_by_workload", help_id="submitted-by-workload-help", context=analytics.presentation)}
+      </div>
+      <div id="staff-date-panel" data-tab-panel="staff">
         {_chart_card(divs["submitted_by_date_activity"], "submitted_by_date_activity", help_id="submitted-by-date-help", context=analytics.presentation)}
       </div>
     </section>
 
-    <section class="dashboard-section" aria-labelledby="exceptions-title">
+    <section class="dashboard-section" id="exceptions-panel" data-tab-panel="sections" aria-labelledby="exceptions-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["exceptions"].eyebrow)}</span>
         <h2 class="section-title" id="exceptions-title">{html.escape(sections["exceptions"].title)}</h2>
@@ -2467,13 +2693,18 @@ def render_dashboard(
         </div>
       </div>
     </section>
+    </div>
 
     <footer class="page-footer">
       <a class="jump-to-top" href="#dashboard-top">{html.escape(page_copy.jump_to_top)}</a>
     </footer>
   </main>
+  {TOOLTIP_SCRIPT}
+  {NAVIGATION_SCRIPT}
+  {CATEGORY_SCRIPT}
+  {print_script}
 </body>
 </html>
 """
-    output_path.write_text(html_text, encoding="utf-8")
+    output_path.write_text(html_text, encoding="utf-8", newline="\n")
     return output_path

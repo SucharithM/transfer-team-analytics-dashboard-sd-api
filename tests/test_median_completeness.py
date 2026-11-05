@@ -136,12 +136,15 @@ def test_age_by_step_keeps_undercovered_group_without_showing_sample_sizes() -> 
     assert trace.type == "pie"
     assert list(trace.labels) == ["Faculty Review", "Review"]
     assert list(trace.values) == [1.0, 0.0]
-    assert trace.texttemplate == "%{value:.1f}d"
-    assert "Median Open Age: %{value:.1f}d" in trace.hovertemplate
+    assert trace.texttemplate == "%{text}"
+    assert list(trace.text) == ["1.0d", "—"]
+    assert "Median Case-Open Age: %{text}" in trace.hovertemplate
     assert "percent" not in trace.texttemplate
     assert "Share" not in trace.hovertemplate
     assert "valid" not in trace.hovertemplate
-    assert chart.layout.annotations[0].text == "<b>1.0d</b>"
+    assert chart.layout.annotations[0].text.startswith("<b>1.0d</b>")
+    assert "Overall median" in chart.layout.annotations[0].text
+    assert chart.layout.meta["category_values"] == ["1.0d", "—"]
 
 
 def test_monthly_completion_keeps_volume_and_suppresses_one_of_one_hundred() -> None:

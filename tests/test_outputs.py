@@ -128,11 +128,11 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert "The current month shows progress so far" in html_text
     assert "Where open cases are in the evaluation process" in html_text
     assert "reached End appear as Completed" in html_text
-    assert "Open Cases by Workflow Step" in html_text
+    assert "Current Open Cases" in html_text
     assert "Cases by Status" in html_text
     assert "Open Cases by Submitter" in html_text
-    assert "Open Cases by Workflow Step and Case Age" in html_text
-    assert "Open Cases: Time and Activity - Risk Overview" in html_text
+    assert "Progress and Aging of Open Cases" in html_text
+    assert "Open Cases Risk and Action Overview" in html_text
     assert 'id="plot-age-idle-action-matrix"' in html_text
     assert 'id="age-idle-action-drilldown"' in html_text
     assert 'data-action-bucket="backlog_stale"' in html_text
@@ -140,7 +140,28 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert "Up to 7 Days · Idle" in html_text
     assert 'plot.on("plotly_click"' in html_text
     assert "excluded for missing or invalid timing" in html_text
-    assert "Cases without usable dates are included in step totals" in html_text
+    assert (
+        "Counts open cases by workflow step and submission age. Cell labels and row totals "
+        "show volume; colors progress from lower-risk recently opened cases to higher-risk "
+        "aged / older cases, with color intensity scaled consistently across the matrix. "
+        "Cases with missing or negative ages are excluded from the bands and reported as "
+        "Age unavailable in hover details. Backlog means open for more than 7 days since submission."
+    ) in html_text
+    for label in (
+        "Median Case-Open Age",
+        "Typical Idle Time",
+        "Current Open Cases",
+        "Progress and Aging of Open Cases",
+        "Open Cases Risk and Action Overview",
+    ):
+        assert f'aria-label="About {label}"' in html_text
+    for title in (
+        "Current Open Cases",
+        "Progress and Aging of Open Cases",
+        "Open Cases Risk and Action Overview",
+    ):
+        assert f'aria-label="{title}"' in html_text
+        assert f"<h2>{title}</h2>" in html_text
     assert "Cases Completed — Last 7 Days" in html_text
     assert "Open cases by submitter over time" not in html_text
     assert "Daily Completed Cases" in html_text
@@ -154,7 +175,7 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert "Total Cases" in html_text
     assert "Package mix" not in html_text
     assert "Total Packages" not in html_text
-    assert "Median Open Age" in html_text
+    assert "Median Case-Open Age" in html_text
     assert "Median Completion Time" in html_text
     assert "Each median includes its valid/total sample" not in html_text
     assert "evaluation-type-table" in html_text
@@ -201,10 +222,10 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     )
     assert html_text.index(
         'aria-label="Median Open-Case Age by Workflow Step"'
-    ) < html_text.index('aria-label="Open Cases by Workflow Step and Case Age"')
+    ) < html_text.index('aria-label="Progress and Aging of Open Cases"')
     assert html_text.index(
-        'aria-label="Open Cases by Workflow Step and Case Age"'
-    ) < html_text.index('aria-label="Open Cases: Time and Activity - Risk Overview"')
+        'aria-label="Progress and Aging of Open Cases"'
+    ) < html_text.index('aria-label="Open Cases Risk and Action Overview"')
     assert 'id="prototype-notice"' not in html_text
     assert "Prototype Notice" not in html_text
     assert (
@@ -221,7 +242,7 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert "<strong>Sucharith Madhusoodana</strong>" in html_text
 
 
-def test_case_observations_sort_by_age_before_limiting_rows() -> None:
+def test_case_observations_retain_package_labels_and_all_rows_in_age_order() -> None:
     exceptions = pd.DataFrame(
         [
             {
@@ -240,13 +261,18 @@ def test_case_observations_sort_by_age_before_limiting_rows() -> None:
         ]
     )
 
+    package_label = "No-Rule Transcript Evaluation | Demo Student 001 | Example Institution"
+    exceptions.loc[0, "item_label"] = package_label
     table_html = _table_html(exceptions)
 
+    assert f"<td>{package_label}</td>" in table_html
     assert table_html.index("<td>case-101</td>") < table_html.index("<td>case-100</td>")
     assert "<td>case-2</td>" in table_html
-    assert "<td>case-1</td>" not in table_html
-    assert "<td>case-0</td>" not in table_html
-    assert "<td>missing-age</td>" not in table_html
+    assert "<td>case-1</td>" in table_html
+    assert "<td>case-0</td>" in table_html
+    assert "<td>missing-age</td>" in table_html
+    assert table_html.count("<tr>") == len(exceptions) + 1
+    assert table_html.index("<td>case-0</td>") < table_html.index("<td>missing-age</td>")
 
 
 def test_workbook_contains_in_the_works_and_backlog_sheets(tmp_path) -> None:
@@ -271,6 +297,15 @@ def test_workbook_contains_in_the_works_and_backlog_sheets(tmp_path) -> None:
     assert "Owner History" in workbook.sheetnames
     assert "Current Backlog" not in workbook.sheetnames
     assert workbook["Owner History"].max_row > 1
+    rows = list(workbook["Age By Step"].values)
+    steps = {row[0]: dict(zip(rows[0], row)) for row in rows[1:]}
+    assert steps["Review"]["age_valid_count"] == 3
+    assert steps["Review"]["age_total_count"] == 4
+    assert steps["Review"]["age_days"] is None
+    assert steps["Faculty Review"]["age_valid_count"] == 1
+    assert steps["Faculty Review"]["age_total_count"] == 1
+    assert steps["Faculty Review"]["age_days"] == 8.0
+    workbook.close()
 
 
 def test_workbook_leaves_partial_rolling_windows_blank(tmp_path) -> None:

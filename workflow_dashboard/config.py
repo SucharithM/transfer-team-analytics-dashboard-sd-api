@@ -64,13 +64,6 @@ class DashboardConfig:
     fixture_path: Path = Path("data/sample_api_response.json")
     history_db_path: Path = Path("outputs/history/workflow_history.sqlite")
     request_timeout_seconds: int = 30
-    terminal_statuses: tuple[str, ...] = (
-        "completed",
-        "complete",
-        "closed",
-        "cancelled",
-        "canceled",
-    )
     terminal_steps: tuple[str, ...] = ("end",)
     stale_idle_days: int = 3
     old_age_days: int = 14
@@ -81,6 +74,9 @@ class DashboardConfig:
     headers: dict[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
+        value = self.backlog_age_days
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError("backlog_age_days must be a finite, non-negative number")
         for name in (
             "minimum_wait_completeness",
             "minimum_idle_completeness",

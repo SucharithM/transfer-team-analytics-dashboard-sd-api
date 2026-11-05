@@ -1,2 +1,2 @@
-# Reviewed installer version; upgrade this before installing application packages.
-pip==26.2.0
+# This installer includes a patched CA bundle; upgrade before application packages.
+pip==26.3

@@ -10,7 +10,8 @@ from typing import Any
 import requests
 
 from .config import DashboardConfig, is_secure_api_url
-from .normalization import FIELD_ALIASES
+from .normalization import record_identity
+from .diagnostics import emit, operation
 
 
 RECORD_LIST_KEYS = ("Item2", "items", "records", "results", "data", "packages", "value")
@@ -117,7 +118,9 @@ def extract_page_payload(raw: Any) -> PagePayload:
             )
         if isinstance(value, dict):
             nested = extract_page_payload(value)
-            if nested.schema_recognized:
+            if nested.schema_recognized and (
+                total is None or nested.total is None or total == nested.total
+            ):
                 nested_total = total if total is not None else nested.total
                 return PagePayload(
                     records=nested.records,
@@ -166,6 +169,7 @@ class WorkflowApiClient:
         self._bearer_token = bearer_token or config.api_token
         self._before_request = before_request
 
+    @operation('api.request')
     def fetch_page(self, *, offset: int = 0, take: int | None = None) -> PagePayload:
         if not is_secure_api_url(self.config.api_url):
             raise ApiConfigurationError("Configure an HTTPS API endpoint without credentials, query parameters, or fragments.")
@@ -188,6 +192,8 @@ class WorkflowApiClient:
             allow_redirects=False,
         )
         try:
+            if type(response.status_code) is int and 100 <= response.status_code <= 599:
+                emit('api.response', http_status=response.status_code)
             if 300 <= response.status_code < 400:
                 raise ApiConfigurationError("API redirected instead of returning records; sign in again.")
             response.raise_for_status()
@@ -208,18 +214,8 @@ class WorkflowApiClient:
     def _record_id(record: dict[str, Any]) -> str | None:
         """Return a normalized package identity using the canonical ID aliases."""
 
-        lowered = {str(key).casefold(): key for key in record}
-        for alias in FIELD_ALIASES["record_id"]:
-            actual = alias if alias in record else lowered.get(alias.casefold())
-            if actual is None:
-                continue
-            value = record[actual]
-            if value is None:
-                continue
-            identity = str(value).strip()
-            if identity:
-                return identity.casefold()
-        return None
+        identity = record_identity(record)
+        return identity.casefold() if identity is not None else None
 
     @classmethod
     def _validate_page_payload(
@@ -336,6 +332,7 @@ class WorkflowApiClient:
             "pagination_validated": total is not None,
         }
 
+    @operation('api.fetch')
     def fetch_all_records(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Fetch all records, retrying one failed integrity check from offset zero."""
 
@@ -344,6 +341,7 @@ class WorkflowApiClient:
             try:
                 return self._fetch_all_records_once(attempt=attempt)
             except PaginationIntegrityError as exc:
+                emit('api.validate.failed')
                 last_error = exc
 
         assert last_error is not None

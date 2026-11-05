@@ -89,6 +89,7 @@ def _summary(
     backlog = open_packages[open_packages["record_id"].eq("nr-open-old")]
     return _evaluation_type_summary(
         packages,
+        generated_at=pd.Timestamp("2026-07-30T16:00:00Z"),
         in_the_works=open_packages,
         backlog=backlog,
         fully_processed=completed,
@@ -149,6 +150,7 @@ def test_empty_evaluation_type_summary_omits_backlog_rate() -> None:
     empty = pd.DataFrame()
     result = _evaluation_type_summary(
         empty,
+        generated_at=pd.Timestamp("2026-07-30T16:00:00Z"),
         in_the_works=empty,
         backlog=empty,
         fully_processed=empty,
@@ -195,6 +197,7 @@ def test_low_volume_type_keeps_completion_sample_visible() -> None:
     )
     result = _evaluation_type_summary(
         continuing,
+        generated_at=pd.Timestamp("2026-07-30T16:00:00Z"),
         in_the_works=continuing.iloc[0:0],
         backlog=continuing.iloc[0:0],
         fully_processed=continuing,

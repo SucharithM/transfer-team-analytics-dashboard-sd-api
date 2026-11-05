@@ -1,5 +1,6 @@
 import argparse
 
+import pandas as pd
 import pytest
 
 from workflow_dashboard import __main__ as cli
@@ -11,6 +12,7 @@ from workflow_dashboard.api_client import (
     records_from_source,
 )
 from workflow_dashboard.config import DashboardConfig
+from workflow_dashboard.normalization import normalize_records
 
 
 def _record(record_id: object, *, key: str = "packageID") -> dict[str, object]:
@@ -84,6 +86,44 @@ def test_inspection_reports_schema_recognition() -> None:
     summary = cli.inspect_payload({"unexpected": "shape"}, source="api")
 
     assert summary["schema_recognized"] is False
+
+
+@pytest.mark.parametrize("outer,inner", [(1, 2), (2, 1), (0, 1)])
+def test_conflicting_nested_totals_abort_fetch(monkeypatch, outer, inner):
+    client = _client()
+    page = extract_page_payload({"total": outer, "data": {
+        "total": inner, "records": [_record("one")],
+    }})
+    assert not page.schema_recognized
+    monkeypatch.setattr(client, "fetch_page", lambda **kwargs: page)
+    with pytest.raises(PaginationIntegrityError):
+        client.fetch_all_records()
+
+
+@pytest.mark.parametrize("outer,inner", [(1, 1), (None, 1), (1, None)])
+def test_consistent_nested_totals_remain_supported(outer, inner):
+    nested = {"records": [_record("one")]}
+    if inner is not None:
+        nested["total"] = inner
+    raw = {"data": nested}
+    if outer is not None:
+        raw["total"] = outer
+    page = extract_page_payload(raw)
+    assert page.schema_recognized
+    assert page.total == 1
+
+
+@pytest.mark.parametrize("missing", [None, "", "  ", "null", "nan"])
+def test_valid_fallback_id_survives_fetch_and_normalization(monkeypatch, missing):
+    record = {"packageID": missing, "ID": " Real-ID "}
+    client = _client()
+    monkeypatch.setattr(client, "fetch_page", lambda **kwargs:
+                        extract_page_payload({"total": 1, "records": [record]}))
+    records, meta = client.fetch_all_records()
+    normalized = normalize_records(records, DashboardConfig(),
+                                   generated_at=pd.Timestamp("2026-11-03T17:00:00Z"))
+    assert meta["pagination_validated"]
+    assert normalized.iloc[0]["record_id"] == "Real-ID"
 
 
 def test_overfilled_pages_advance_by_actual_response_length(monkeypatch) -> None:

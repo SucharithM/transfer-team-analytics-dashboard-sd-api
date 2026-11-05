@@ -2,12 +2,20 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 if (-not $IsWindows -and $env:OS -ne 'Windows_NT') { throw 'Build this executable on Windows.' }
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw 'Git is required for the publication-check tests. Install Git for Windows with command-line access, or add its cmd folder to this session''s PATH, then rerun the build.'
+}
 python -m pip install -r requirements-bootstrap.txt
 if ($LASTEXITCODE -ne 0) { throw 'Installer update failed.' }
 python -m pip install -r requirements-dev.txt -r packaging/requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
-python -m pytest -q
+# Avoid stale permissions in Windows' shared pytest temp root.
+New-Item -ItemType Directory -Force -Path build | Out-Null
+python -m pytest -q --basetemp=build/pytest-temp
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed; no executable will be built.' }
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name WorkflowTransferDashboard --collect-all playwright --collect-all plotly --add-data 'workflow_dashboard/desktop_settings.toml;workflow_dashboard' desktop_launcher.py
+python -m workflow_dashboard.build_identity --output build/build_identity.json
+if ($LASTEXITCODE -ne 0) { throw 'Build identity generation failed.' }
+# Keep dependencies beside the executable instead of extracting them on every launch.
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name WorkflowTransferDashboard --collect-all playwright --collect-all plotly --add-data 'workflow_dashboard/desktop_settings.toml.example;workflow_dashboard' --add-data 'build/build_identity.json;workflow_dashboard' desktop_launcher.py
 if ($LASTEXITCODE -ne 0) { throw 'Windows build failed.' }
-Write-Host 'Built dist/WorkflowTransferDashboard.exe.'
+Write-Host 'Built dist/WorkflowTransferDashboard/WorkflowTransferDashboard.exe. Distribute the entire WorkflowTransferDashboard folder, including _internal.'

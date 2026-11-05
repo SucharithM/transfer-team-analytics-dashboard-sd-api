@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -44,8 +45,8 @@ def _excel_value(value: Any, *, one_decimal: bool = False) -> Any:
         if value.tzinfo is not None:
             value = dashboard_timestamp(value).tz_localize(None)
         return value.to_pydatetime()
-    if isinstance(value, str) and len(value) > 32000:
-        return value[:32000]
+    if isinstance(value, str):
+        return ILLEGAL_CHARACTERS_RE.sub("", value)[:32000]
     return value
 
 
@@ -102,7 +103,7 @@ def _style_sheet(ws) -> None:
 
 def _summary_sheet(ws, analytics: AnalyticsBundle, history: pd.DataFrame) -> None:
     ws.sheet_view.showGridLines = False
-    ws["A1"] = analytics.dashboard_title
+    ws["A1"] = _excel_value(analytics.dashboard_title)
     ws["A1"].font = Font(name="Segoe UI", size=18, bold=True, color=DARK)
     generated_at = dashboard_timestamp(analytics.generated_at)
     ws["A2"] = (
@@ -202,6 +203,11 @@ def export_workbook(
             content.WORKBOOK.sheet_names["backlog"],
             analytics.backlog,
             "BacklogTable",
+        ),
+        (
+            content.WORKBOOK.sheet_names["aging_by_step"],
+            analytics.chart_tables["aging_by_step"],
+            "AgeByStepTable",
         ),
         (
             content.WORKBOOK.sheet_names["submitted_by_activity"],

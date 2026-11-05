@@ -178,7 +178,7 @@ def test_coverage_appears_in_dashboard_and_workbook(tmp_path) -> None:
         workbook["Summary"].cell(row=row, column=2).value
         for row in range(4, 10)
     }
-    assert summary_values["Typical Time Since Last Activity"] == "—"
+    assert summary_values["Typical Idle Time"] == "—"
     exception_values = [
         cell.value for row in workbook["Exceptions"].iter_rows() for cell in row
     ]
@@ -217,7 +217,7 @@ def test_threshold_changes_metric_definition() -> None:
     )
 
     assert baseline.definition_hash != changed.definition_hash
-    assert baseline.metric_definition_version == METRIC_DEFINITION_VERSION == 9
+    assert baseline.metric_definition_version == METRIC_DEFINITION_VERSION == 11
 
 
 def test_idle_coverage_round_trips_through_history(tmp_path) -> None:

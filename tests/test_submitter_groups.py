@@ -54,7 +54,7 @@ def test_new_staff_definition_round_trips_groups_without_mixing_old_series(tmp_p
     config = DashboardConfig()
     analytics = build_analytics(df, config=config, generated_at=GENERATED_AT)
     definition = build_metric_definition(config, df, source='fixture')
-    assert definition.metric_definition_version == 9
+    assert definition.metric_definition_version == 11
     assert 'roster_plus_others_and_not_recorded' in definition.definition_json
     db = tmp_path / 'history.sqlite'
     store_snapshot(db, analytics, definition, source='fixture')
@@ -73,8 +73,11 @@ def test_action_day_labels_match_nondefault_threshold_in_plot_and_hover():
     assert labels['young_active'] == 'Up to 8 Days · Active'
     assert labels['backlog_stale'] == 'Over 8 Days · Idle'
     annotations = [a.text for a in chart.layout.annotations]
-    assert any('Up to 8 Days · Active' in label for label in annotations)
-    assert any('Over 8 Days · Idle' in label for label in annotations)
+    assert any('8d backlog' in label for label in annotations)
+    from workflow_dashboard.dashboard_html import _age_idle_action_matrix_card
+    card = _age_idle_action_matrix_card('', analytics.chart_tables['age_idle_action_matrix'])
+    assert 'Up to 8 Days · Active' in card
+    assert 'Over 8 Days · Idle' in card
     for trace in chart.data:
         for row in trace.customdata:
             assert row[6] == labels[row[5]]

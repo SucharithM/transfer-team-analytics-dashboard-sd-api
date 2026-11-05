@@ -125,7 +125,6 @@ def test_definition_hash_is_canonical_and_ignores_unrelated_config(tmp_path) -> 
         output_dir=tmp_path / "other-output",
         fixture_path=tmp_path / "unused-for-api.json",
         request_timeout_seconds=99,
-        terminal_statuses=("unused",),
     )
     records = _records_with_workflows("Workflow B", None, "Workflow A")
     reordered_records = records.iloc[::-1].reset_index(drop=True)
@@ -136,14 +135,13 @@ def test_definition_hash_is_canonical_and_ignores_unrelated_config(tmp_path) -> 
     assert first.definition_hash == second.definition_hash
     assert first.definition_json == second.definition_json
     assert first.values["population"]["workflow_names"] == [
-        "Workflow A",
-        "Workflow B",
+        "workflow a",
+        "workflow b",
     ]
     assert first.values["population"]["includes_unnamed_workflow"] is True
     assert first.values["population"]["workflow_filter"] == "workflow a"
     assert "secret-one" not in first.definition_json
     assert "api_take" not in first.definition_json
-    assert "terminal_statuses" not in first.definition_json
 
 
 @pytest.mark.parametrize(
