@@ -11,7 +11,7 @@ narwhals==2.28.0
 numpy==2.5.1
 openpyxl==3.1.5
 packaging==26.3
-pandas==3.0.3
+pandas==3.1.0
 pefile==2024.8.26
 playwright==1.63.0
 plotly==7.1.0
