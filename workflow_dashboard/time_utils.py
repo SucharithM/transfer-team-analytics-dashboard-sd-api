@@ -39,6 +39,9 @@ def parse_source_time_series(series: pd.Series) -> pd.Series:
         if pd.isna(timestamp):
             return pd.NaT
         timestamp = pd.Timestamp(timestamp)
+        # Keep minimum-date source sentinels missing across pandas versions.
+        if timestamp.year == 1:
+            return pd.NaT
         try:
             if timestamp.tzinfo is None:
                 timestamp = timestamp.tz_localize(
