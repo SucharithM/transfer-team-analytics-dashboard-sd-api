@@ -102,15 +102,16 @@ PRINT_STYLES = """
         padding: 5px; font-size: 9pt; position: static;
       }
       .metric-cell strong { font-size: 9pt; }
-      #problem-rows-table th:nth-child(1) { width: 14%; }
-      #problem-rows-table th:nth-child(2) { width: 9%; }
-      #problem-rows-table th:nth-child(3) { width: 14%; }
-      #problem-rows-table th:nth-child(4) { width: 17%; }
-      #problem-rows-table th:nth-child(5) { width: 7%; }
-      #problem-rows-table th:nth-child(6) { width: 9%; }
-      #problem-rows-table th:nth-child(7) { width: 5%; }
-      #problem-rows-table th:nth-child(8) { width: 7%; }
-      #problem-rows-table th:nth-child(9), #problem-rows-table th:nth-child(10) { width: 9%; }
+      #problem-rows-table .observation-table { width: 100%; min-width: 0; }
+      .observation-table col { width: var(--print-width); }
+      #problem-rows-table th {
+        white-space: normal; word-break: normal; overflow-wrap: normal;
+      }
+      #problem-rows-table th[data-field="status"],
+      #problem-rows-table th[data-field="owner"] { white-space: nowrap; }
+      #problem-rows-table .observation-chip { font-size: 9pt; padding: 3px 4px; }
+      #problem-rows-table .observation-chip:not(.workflow-chip) { display: inline-block; }
+      #problem-rows-table .observation-chip svg { vertical-align: text-bottom; margin-right: 4px; }
       .action-drilldown-table th:nth-child(1) { width: 17%; }
       .action-drilldown-table th:nth-child(2) { width: 35%; }
       .action-drilldown-table th:nth-child(3) { width: 10%; }

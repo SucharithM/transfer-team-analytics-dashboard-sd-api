@@ -181,3 +181,33 @@ def test_executive_help_avoids_technical_and_timezone_jargon():
             "completeness",
         ):
             assert phrase not in text
+
+
+def test_observation_chips_preserve_labels_and_escape_html():
+    import pandas as pd
+    from workflow_dashboard.dashboard_html import _table_html
+
+    statuses = ["In Progress", "InProgress", "Needs Review", "NeedsReview", "Completed",
+                '<Unknown & "pending">', None, pd.NA, float("nan"), ""]
+    markup = _table_html(pd.DataFrame({
+        "status": statuses,
+        "step_name": ['<Workflow & "review">'] * 6 + [None, pd.NA, float("nan"), ""],
+    }))
+    assert markup.count('class="observation-chip workflow-chip"') == 6
+    assert markup.count('status-progress') == 2
+    assert markup.count('status-review') == 2
+    assert markup.count('status-completed') == 1
+    assert markup.count('status-unknown') == 1
+    assert markup.count('aria-hidden="true" focusable="false"') == 5
+    for label in statuses[:5]:
+        assert f">{label}</span>" in markup
+    assert '&lt;Unknown &amp; &quot;pending&quot;&gt;' in markup
+    assert '&lt;Workflow &amp; &quot;review&quot;&gt;' in markup
+    assert '<Unknown' not in markup and '<Workflow' not in markup
+    assert markup.count('<tr><td></td><td></td></tr>') == 4
+    assert markup.count('<tr>') == len(statuses) + 1
+    assert '--table-width: 480px' in markup
+    assert '<col data-field="step_name" style="--column-width: 320px;' in markup
+    assert '<col data-field="status" style="--column-width: 160px;' in markup
+    assert markup.index('data-field="step_name"') < markup.index('data-field="status"')
+    assert 'empty-table' in _table_html(pd.DataFrame())

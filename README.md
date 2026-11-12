@@ -36,6 +36,9 @@ python -m workflow_dashboard inspect --source fixture
 python -m workflow_dashboard run --source fixture
 ```
 
+For thousands of fictional records and isolated trend history, see
+[synthetic UI previews](docs/development.md#synthetic-ui-previews).
+
 For the live API, complete SSO in the separate Edge window:
 
 ```bash
