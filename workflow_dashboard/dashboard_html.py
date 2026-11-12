@@ -1771,19 +1771,42 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
     )
 
 
+def _observation_cell(column: str, value: object) -> str:
+    if pd.isna(value) or str(value) == "":
+        return ""
+    label = html.escape(str(value))
+    if column == "step_name":
+        return f'<span class="observation-chip workflow-chip"><span>{label}</span></span>'
+    if column != "status":
+        return label
+    status = {
+        "inprogress": ("progress", '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+        "needsreview": ("review", '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>'),
+        "completed": ("completed", '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>'),
+    }.get("".join(str(value).casefold().split()))
+    kind, drawing = status if status else ("unknown", "")
+    icon = (
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        f'stroke-linejoin="round">{drawing}</svg>'
+        if drawing else ""
+    )
+    return f'<span class="observation-chip status-{kind}">{icon}<span>{label}</span></span>'
+
+
 def _table_html(exceptions: pd.DataFrame) -> str:
-    columns = [
-        "exception_reasons",
-        "record_id",
-        "item_label",
-        "step_name",
-        "status",
-        "owner",
-        "age_days",
-        "idle_days",
-        "submitted_at",
-        "last_activity_at",
-    ]
+    columns = {
+        "exception_reasons": 260,
+        "record_id": 140,
+        "item_label": 260,
+        "step_name": 320,
+        "status": 160,
+        "owner": 180,
+        "age_days": 150,
+        "idle_days": 200,
+        "submitted_at": 200,
+        "last_activity_at": 200,
+    }
     if exceptions.empty:
         return (
             '<div class="empty-table">'
@@ -1813,17 +1836,27 @@ def _table_html(exceptions: pd.DataFrame) -> str:
                 lambda value: format_one_decimal(value, missing="")
             )
     headers = "".join(
-        f"<th>{html.escape(content.OBSERVATION_TABLE.header_labels.get(column, column.replace('_', ' ').title()))}</th>"
+        f'<th scope="col" data-field="{column}">{html.escape(content.OBSERVATION_TABLE.header_labels.get(column, column.replace("_", " ").title()))}</th>'
         for column in table.columns
     )
     rows = []
     for _, row in table.iterrows():
         cells = "".join(
-            f"<td>{html.escape('' if pd.isna(value) else str(value))}</td>"
-            for value in row
+            f"<td>{_observation_cell(column, value)}</td>"
+            for column, value in row.items()
         )
         rows.append(f"<tr>{cells}</tr>")
-    return f'<table class="data-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
+    width = sum(columns[column] for column in table.columns)
+    colgroup = "".join(
+        f'<col data-field="{column}" style="--column-width: {columns[column]}px; '
+        f'--print-width: {columns[column] / width * 100:.4f}%">'
+        for column in table.columns
+    )
+    return (
+        f'<table class="data-table observation-table" style="--table-width: {width}px">'
+        f'<colgroup>{colgroup}</colgroup><thead><tr>{headers}</tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>'
+    )
 
 
 def _content_security_policy(markup: str) -> str:
@@ -2452,6 +2485,42 @@ def render_dashboard(
       z-index: 1;
     }}
     .data-table tbody tr:hover {{ background: #f7faff; }}
+    #problem-rows-table .observation-table {{
+      width: var(--table-width);
+      min-width: var(--table-width);
+      table-layout: fixed;
+    }}
+    .observation-table col {{ width: var(--column-width); }}
+    #problem-rows-table th {{
+      white-space: nowrap;
+      word-break: normal;
+      overflow-wrap: normal;
+    }}
+    #problem-rows-table td {{
+      white-space: normal;
+      word-break: normal;
+      overflow-wrap: break-word;
+    }}
+    .observation-chip {{
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 5px;
+      max-width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 4px 7px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      color: #334155;
+      background: #fff;
+    }}
+    .observation-chip > span {{ min-width: 0; }}
+    .observation-chip svg {{ width: 14px; height: 14px; flex: 0 0 14px; margin-top: 1px; }}
+    .workflow-chip {{ background: #f1f5f9; }}
+    .status-progress {{ background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }}
+    .status-review {{ background: #fffbeb; color: #92400e; border-color: #fde68a; }}
+    .status-completed {{ background: #f0fdf4; color: #166534; border-color: #bbf7d0; }}
     .evaluation-type-table-container .table-scroll {{
       max-height: none;
     }}

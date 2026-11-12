@@ -1,6 +1,7 @@
 """Offline browser coverage for section navigation and compact charts."""
 
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -259,3 +260,72 @@ def test_footer_tracks_content_and_returns_to_top(page, tmp_path):
         assert page.locator('.dashboard-tabs').evaluate("e => getComputedStyle(e).minHeight") == '0px'
     page.locator('.jump-to-top').click()
     page.wait_for_function('() => scrollY < 2')
+
+
+@pytest.mark.parametrize("width", [1440, 1024, 720, 390])
+def test_observation_headers_chips_and_contained_scroll(page, tmp_path, width):
+    cases = pd.DataFrame([
+        _case(str(i), age_days=30, idle_days=8, status=status,
+              step_name=("Long workflow name pending additional documentation " * 3
+                         if i % 2 else "W" * 180), item_label="X" * 180)
+        for i, status in enumerate(["In Progress", "InProgress", "Needs Review",
+                                    "NeedsReview", "Completed", "Unknown"])
+    ])
+    analytics = _analytics(cases.to_dict("records"))
+    # Completed rows are still observations when supplied by the report's analytics.
+    analytics = replace(analytics, exceptions=cases.assign(exception_reasons="Review these observations"))
+    path = render_dashboard(df=cases, analytics=analytics, history=pd.DataFrame(),
+                            owner_history=pd.DataFrame(), output_path=tmp_path / "observations.html")
+    page.set_viewport_size({"width": width, "height": 900})
+    _open(page, path)
+    page.locator('#tab-exceptions-panel').click()
+    table = page.locator('#problem-rows-table table')
+    assert table.locator('tbody tr').count() == 6
+    assert table.locator('th').evaluate_all("""headers => headers.every(h => {
+      const r = document.createRange(); r.selectNodeContents(h);
+      return r.getClientRects().length === 1 && h.scrollWidth <= h.clientWidth;
+    })""")
+    assert table.locator('col').evaluate_all(
+        'cols => cols.map(c => c.getBoundingClientRect().width)'
+    ) == [260, 140, 260, 320, 160, 180, 150, 200, 200, 200]
+    assert table.locator('.observation-chip').count() == 12
+    assert table.locator('.observation-chip').evaluate_all("""chips => chips.every(c =>
+      c.scrollWidth <= c.clientWidth && c.getBoundingClientRect().right <=
+      c.closest('td').getBoundingClientRect().right &&
+      getComputedStyle(c).fontSize === '12px' &&
+      getComputedStyle(c).borderRadius === '8px')""")
+    assert table.locator('td').evaluate_all('cells => cells.every(c => c.scrollWidth <= c.clientWidth)')
+    scroll = page.locator('#problem-rows-table .table-scroll')
+    assert scroll.evaluate('s => s.scrollWidth > s.clientWidth')
+    scroll.evaluate('s => s.scrollLeft = s.scrollWidth')
+    assert scroll.evaluate('s => s.scrollLeft > 0')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    scroll.evaluate('s => s.scrollLeft = 0')
+    artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
+    if artifact_dir:
+        page.locator('#problem-rows-table').screenshot(
+            path=str(Path(artifact_dir) / f'observations-{width}.png'))
+        scroll.evaluate('s => s.scrollLeft = 660')
+        page.locator('#problem-rows-table').screenshot(
+            path=str(Path(artifact_dir) / f'observations-workflow-{width}.png'))
+        scroll.evaluate('s => s.scrollLeft = 980')
+        page.locator('#problem-rows-table').screenshot(
+            path=str(Path(artifact_dir) / f'observations-status-{width}.png'))
+    page.emulate_media(media='print')
+    page.set_viewport_size({'width': 980, 'height': 740})
+    assert table.evaluate('t => t.scrollWidth <= t.clientWidth + 1')
+    assert table.locator('th[data-field="status"], th[data-field="owner"]').evaluate_all(
+        """headers => headers.every(h => {
+          const r = document.createRange(); r.selectNodeContents(h);
+          return r.getClientRects().length === 1 && h.scrollWidth <= h.clientWidth;
+        })""")
+    assert table.locator('.workflow-chip').evaluate_all('chips => chips.every(c => c.scrollWidth <= c.clientWidth)')
+
+    assert table.locator('.status-review > span').first.evaluate("""label => {
+      return ['Needs', 'Review'].every(word => {
+        const start = label.firstChild.textContent.indexOf(word);
+        const r = document.createRange();
+        r.setStart(label.firstChild, start); r.setEnd(label.firstChild, start + word.length);
+        return r.getClientRects().length === 1;
+      });
+    }""")
