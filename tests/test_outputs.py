@@ -119,7 +119,6 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     html_text = html_path.read_text(encoding="utf-8")
 
     assert analytics.dashboard_title in html_text
-    assert "(Prototype)" in html_text
     assert "Run Time" not in html_text
     assert "Run time" not in html_text
     assert "cases have been open for more than 7 days since submission" in html_text
@@ -226,14 +225,6 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert html_text.index(
         'aria-label="Progress and Aging of Open Cases"'
     ) < html_text.index('aria-label="Open Cases Risk and Action Overview"')
-    assert 'id="prototype-notice"' not in html_text
-    assert "Prototype Notice" not in html_text
-    assert (
-        "Dashboard metrics are preliminary and may not fully reflect the "
-        "underlying data. They will be refined as the prototype evolves. "
-        "This report demonstrates the potential of SoftDocs API data "
-        "extraction and dashboarding."
-    ) not in html_text
     assert ">I understand</button>" not in html_text
     assert "notice.showModal()" not in html_text
     assert "Please note that the dashboard metrics" not in html_text
@@ -261,7 +252,9 @@ def test_case_observations_retain_package_labels_and_all_rows_in_age_order() -> 
         ]
     )
 
-    package_label = "No-Rule Transcript Evaluation | Demo Student 001 | Example Institution"
+    package_label = (
+        "No-Rule Transcript Evaluation | Demo Student 001 | Example Institution"
+    )
     exceptions.loc[0, "item_label"] = package_label
     table_html = _table_html(exceptions)
 
@@ -272,7 +265,9 @@ def test_case_observations_retain_package_labels_and_all_rows_in_age_order() -> 
     assert "<td>case-0</td>" in table_html
     assert "<td>missing-age</td>" in table_html
     assert table_html.count("<tr>") == len(exceptions) + 1
-    assert table_html.index("<td>case-0</td>") < table_html.index("<td>missing-age</td>")
+    assert table_html.index("<td>case-0</td>") < table_html.index(
+        "<td>missing-age</td>"
+    )
 
 
 def test_workbook_contains_in_the_works_and_backlog_sheets(tmp_path) -> None:

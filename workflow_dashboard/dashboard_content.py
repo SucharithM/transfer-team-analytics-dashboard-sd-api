@@ -105,7 +105,6 @@ class PageContent:
     """Top-level and navigational dashboard copy."""
 
     team_eyebrow: str
-    prototype_label: str
     generated_prefix: str
     authorship_prefix: str
     author_name: str
@@ -206,7 +205,6 @@ class WorkbookContent:
 
 PAGE = PageContent(
     team_eyebrow="Transfer Credits Team",
-    prototype_label="(Prototype)",
     generated_prefix="Generated",
     authorship_prefix="Developed by",
     author_name="Sucharith Madhusoodana",

@@ -28,6 +28,7 @@ def _render(tmp_path, config, df=None):
 def test_browser_title_is_exact_configured_title_and_escaped(tmp_path, title):
     _, markup = _render(tmp_path, DashboardConfig(dashboard_title=title))
     assert f'<title>{html.escape(title)}</title>' in markup
+    assert f'<h1>{html.escape(title)}</h1>' in markup
     assert 'Dashboard Dashboard' not in markup
 
 
@@ -78,9 +79,15 @@ def test_summary_copy_changes_without_renaming_audit_tabs_or_columns(tmp_path):
     assert '<th scope="col">Median Case-Open Age</th>' in markup
     assert [c.value for c in next(workbook['Daily Closures'].rows)] == [
         'closed_date', 'closed_count', 'rolling_7_day_avg']
-    for label in ('Submitter', 'Workflow Step', 'Case Age (Days)',
-                  'Days Since Last Activity', 'Case Submitted', 'Package ID'):
-        assert f'<th>{label}</th>' in markup
+    for field, label in (
+        ('owner', 'Submitter'),
+        ('step_name', 'Workflow Step'),
+        ('age_days', 'Case Age (Days)'),
+        ('idle_days', 'Days Since Last Activity'),
+        ('submitted_at', 'Case Submitted'),
+        ('record_id', 'Package ID'),
+    ):
+        assert f'<th scope="col" data-field="{field}">{label}</th>' in markup
     assert 'Selected Cases' in markup
     assert 'open cases shown' in markup
     assert 'Median Completion Time' in markup

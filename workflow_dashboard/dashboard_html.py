@@ -2103,12 +2103,6 @@ def render_dashboard(
       margin: 0;
     }}
     h2 {{ margin: 0; }}
-    .prototype-label {{
-      color: var(--muted);
-      font-size: 0.58em;
-      font-weight: 700;
-      white-space: nowrap;
-    }}
     .dashboard-header p {{
       color: var(--muted);
       font-size: 14px;
@@ -2651,7 +2645,7 @@ def render_dashboard(
         <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
         <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
       </div>
-      <h1>{html.escape(analytics.dashboard_title)} <span class="prototype-label">{html.escape(page_copy.prototype_label)}</span></h1>
+      <h1>{html.escape(analytics.dashboard_title)}</h1>
       <div class="header-utility-row">
         <p class="generated-at">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</p>
         <div class="pdf-export">
