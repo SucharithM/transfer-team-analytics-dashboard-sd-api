@@ -33,7 +33,7 @@ NAVIGATION_STYLES = """
     }
     .dashboard-tabbar a {
       display: flex; align-items: flex-end; flex: 0 0 auto;
-      min-height: 32px; padding: 4px 12px; border-radius: 6px;
+      min-height: 34px; padding: 4px 12px; border-radius: 6px;
       color: var(--muted); font-size: 13px; font-weight: 600;
       text-decoration: none; white-space: nowrap;
       transition: color 120ms ease, background-color 120ms ease;

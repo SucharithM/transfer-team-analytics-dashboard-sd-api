@@ -1776,20 +1776,32 @@ def _observation_cell(column: str, value: object) -> str:
         return ""
     label = html.escape(str(value))
     if column == "step_name":
-        return f'<span class="observation-chip workflow-chip"><span>{label}</span></span>'
+        return (
+            f'<span class="observation-chip workflow-chip"><span>{label}</span></span>'
+        )
     if column != "status":
         return label
     status = {
-        "inprogress": ("progress", '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
-        "needsreview": ("review", '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>'),
-        "completed": ("completed", '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>'),
+        "inprogress": (
+            "progress",
+            '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+        ),
+        "needsreview": (
+            "review",
+            '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
+        ),
+        "completed": (
+            "completed",
+            '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+        ),
     }.get("".join(str(value).casefold().split()))
     kind, drawing = status if status else ("unknown", "")
     icon = (
         '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" '
         'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
         f'stroke-linejoin="round">{drawing}</svg>'
-        if drawing else ""
+        if drawing
+        else ""
     )
     return f'<span class="observation-chip status-{kind}">{icon}<span>{label}</span></span>'
 
@@ -1854,7 +1866,7 @@ def _table_html(exceptions: pd.DataFrame) -> str:
     )
     return (
         f'<table class="data-table observation-table" style="--table-width: {width}px">'
-        f'<colgroup>{colgroup}</colgroup><thead><tr>{headers}</tr></thead>'
+        f"<colgroup>{colgroup}</colgroup><thead><tr>{headers}</tr></thead>"
         f'<tbody>{"".join(rows)}</tbody></table>'
     )
 
@@ -2130,6 +2142,7 @@ def render_dashboard(
       box-shadow: 0 4px 14px rgba(34, 49, 73, 0.05);
       padding: 8px 12px;
       text-align: center;
+      justify-content: center;
       position: relative;
     }}
     .kpi:hover,
@@ -2137,10 +2150,10 @@ def render_dashboard(
     .kpi-heading {{
       align-items: flex-start;
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       gap: 6px;
       min-height: 32.5px;
-      text-align: left;
+      text-align: center;
     }}
     .kpi-label {{
       color: var(--muted);

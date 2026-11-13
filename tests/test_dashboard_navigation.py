@@ -32,7 +32,7 @@ def test_navigation_preserves_report_headings_and_components(tmp_path):
 
 @pytest.mark.parametrize('width', [1680, 1440, 1401, 1280, 1024, 720, 390])
 @pytest.mark.parametrize('scenario', ['sample', 'empty', 'stress'])
-def test_overview_cards_are_compact_with_left_headings_and_centered_values(page, tmp_path, width, scenario):
+def test_overview_cards_are_compact_with_centered_headings_and_values(page, tmp_path, width, scenario):
     page.set_viewport_size({'width': width, 'height': 1000})
     _open(page, _report(tmp_path / 'layout.html', scenario))
     if scenario == 'stress':
@@ -42,11 +42,13 @@ def test_overview_cards_are_compact_with_left_headings_and_centered_values(page,
     cards = page.locator('.kpi').evaluate_all('''cards => cards.map(card => {
       const bounds = card.getBoundingClientRect();
       const label = card.querySelector('.kpi-label').getBoundingClientRect();
+      const help = card.querySelector('.help-control').getBoundingClientRect();
       const value = card.querySelector('strong').getBoundingClientRect();
       return {top: bounds.top, width: bounds.width, height: bounds.height,
         valueTop: value.top - bounds.top,
-        labelLeft: label.left - bounds.left,
+        headingCentered: Math.abs((label.left + help.right) / 2 - bounds.left - bounds.width / 2) < 1,
         headingAlign: getComputedStyle(card.querySelector('.kpi-heading')).textAlign,
+        headingJustify: getComputedStyle(card.querySelector('.kpi-heading')).justifyContent,
         valueAlign: getComputedStyle(card.querySelector('strong')).textAlign,
         centered: Math.abs(value.left + value.width / 2 - bounds.left - bounds.width / 2) < 1,
         padding: getComputedStyle(card).padding,
@@ -55,8 +57,9 @@ def test_overview_cards_are_compact_with_left_headings_and_centered_values(page,
     for card in cards:
         assert card['centered'] and card['fits']
         assert card['padding'] == '8px 12px'
-        assert card['labelLeft'] == pytest.approx(13)
-        assert card['headingAlign'] == 'left'
+        assert card['headingCentered']
+        assert card['headingAlign'] == 'center'
+        assert card['headingJustify'] == 'center'
         assert card['valueAlign'] == 'center'
         assert card['height'] <= (114 if width > 1400 else 100)
         assert abs(card['height'] - cards[0]['height']) < 1
@@ -67,12 +70,12 @@ def test_overview_cards_are_compact_with_left_headings_and_centered_values(page,
         assert link.evaluate(
             'link => getComputedStyle(link).alignItems'
         ) == 'flex-end'
-        assert link.bounding_box()['height'] == 32
+        assert link.bounding_box()['height'] == 34
         assert link.evaluate('''link => {
           const text = document.createRange();
           text.selectNodeContents(link);
           return text.getBoundingClientRect().top - link.getBoundingClientRect().top;
-        }''') <= 10
+        }''') <= 12
     assert page.locator('.dashboard-tabs').evaluate(
         'shell => getComputedStyle(shell).marginTop'
     ) == '8px'
