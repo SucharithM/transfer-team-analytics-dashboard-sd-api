@@ -82,5 +82,5 @@ def test_monthly_chart_uses_date_axis_and_has_no_duplicate_trendline() -> None:
     assert list(chart.data[0].y) == [1, 0, 1]
     assert list(chart.data[0].x) == list(pd.date_range("2026-01-01", periods=3, freq="MS"))
     assert chart.layout.xaxis.type == "date"
-    assert list(chart.layout.xaxis.ticktext) == ["Jan 2026", "Feb 2026", "Mar 2026"]
+    assert list(chart.layout.xaxis.ticktext) == ["Jan 26", "Feb 26", "Mar 26"]
     assert chart.data[0].customdata[0][1] == "1/1 valid"

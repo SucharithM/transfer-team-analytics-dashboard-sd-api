@@ -25,12 +25,12 @@ from .number_format import format_one_decimal
 from .time_utils import dashboard_time_series, dashboard_timestamp
 
 AGING_BANDS: tuple[tuple[str, float, float | None], ...] = (
-    ("0–3d", 0.0, 3.0),
-    ("3–7d", 3.0, 7.0),
-    ("7–14d", 7.0, 14.0),
-    ("14–30d", 14.0, 30.0),
-    ("30–60d", 30.0, 60.0),
-    ("60d+", 60.0, None),
+    ("0–3 days", 0.0, 3.0),
+    ("3–7 days", 3.0, 7.0),
+    ("7–14 days", 7.0, 14.0),
+    ("14–30 days", 14.0, 30.0),
+    ("30–60 days", 30.0, 60.0),
+    ("60+ days", 60.0, None),
 )
 AGING_BAND_LABELS = tuple(label for label, _, _ in AGING_BANDS)
 ACTION_BUCKET_LABELS = action_bucket_labels(7.0)
@@ -82,7 +82,7 @@ def _fmt_count(value: int | float | None) -> str:
 
 
 def _fmt_days(value: float | None) -> str:
-    return format_one_decimal(value, suffix="d")
+    return format_one_decimal(value, suffix=" days")
 
 
 def _fmt_percentage(value: float) -> str:

@@ -220,7 +220,7 @@ def test_evaluation_type_summary_html_is_simplified_and_excludes_pii() -> None:
     assert html_text.count("50.0%") == 1
     assert "secondary-value" not in html_text
     assert "metric-sample" not in html_text
-    assert "15.0d" in html_text
+    assert "15.0 days" in html_text
     assert "2/2 valid" not in html_text
     assert "1/2 valid" not in html_text
     assert "Person" not in html_text

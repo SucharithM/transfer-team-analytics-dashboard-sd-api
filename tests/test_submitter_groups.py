@@ -35,11 +35,10 @@ def test_dated_staff_groups_include_all_eligible_dates_and_zero_fill_members():
     assert len(table['submitted_date'].unique()) == 1
 
 
-def test_group_colors_are_fixed_and_keep_named_staff_colors():
+def test_submitter_group_colors_are_fixed():
     order = DashboardConfig().team_members
     assert _category_color('Others', 'staff', category_order=order) == '#475569'
     assert _category_color('Not recorded', 'staff', category_order=order) == '#737373'
-    assert _category_color('Staff Member E', 'staff', category_order=order) == '#F48FB1'
     table = _team_member_counts(pd.DataFrame({'owner': ['External', None, order[0]]}), order)
     chart = _donut_chart(table, 'owner', 'count', 'Staff', color_dimension='staff', category_order=order)
     colors = dict(zip(chart.data[0].customdata, chart.data[0].marker.colors))
@@ -73,7 +72,7 @@ def test_action_day_labels_match_nondefault_threshold_in_plot_and_hover():
     assert labels['young_active'] == 'Up to 8 Days · Active'
     assert labels['backlog_stale'] == 'Over 8 Days · Idle'
     annotations = [a.text for a in chart.layout.annotations]
-    assert any('8d backlog' in label for label in annotations)
+    assert any('8 days backlog' in label for label in annotations)
     from workflow_dashboard.dashboard_html import _age_idle_action_matrix_card
     card = _age_idle_action_matrix_card('', analytics.chart_tables['age_idle_action_matrix'])
     assert 'Up to 8 Days · Active' in card

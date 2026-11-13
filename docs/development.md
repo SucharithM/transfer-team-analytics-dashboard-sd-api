@@ -1,7 +1,6 @@
 # Development and testing
 
-Follow the [README setup](../README.md#setup) to install development dependencies.
-Run the normal test suite with:
+Install dependencies using the [README setup](../README.md#setup), then run:
 
 ```bash
 python -m pytest -q
@@ -9,11 +8,9 @@ python -m pytest -q
 
 ## Windows test directory
 
-The [Windows build script](../packaging/build_windows.ps1) uses `build/pytest-temp`
-instead of the shared Windows pytest temp folder to avoid permission errors.
-Pytest clears this dedicated directory on each build; do not store other files
-there. To run tests separately with the same setting, create the parent directory
-first:
+The [build script](../packaging/build_windows.ps1) uses `build/pytest-temp` to avoid
+shared temp-folder permission errors. Pytest clears this directory on each build;
+do not store other files there. To use it manually:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path build | Out-Null
@@ -22,63 +19,43 @@ python -m pytest -q --basetemp=build/pytest-temp
 
 ## Browser checks
 
-Real browser PDF, navigation, and interaction checks are opt-in and require an
-installed Chrome or Edge. Set `DASHBOARD_PDF_BROWSER=chrome` or
-`DASHBOARD_PDF_BROWSER=msedge` in the environment, then run:
+Set `DASHBOARD_PDF_BROWSER=chrome` or `msedge` before running the suite to include
+PDF, navigation, interaction, year-selector, and large-preview checks. The browser
+must be installed; these checks are otherwise skipped.
 
-```bash
-python -m pytest -q tests/test_dashboard_pdf.py tests/test_dashboard_navigation.py tests/test_dashboard_interactions.py
-```
-
-Optionally set `DASHBOARD_PDF_ARTIFACT_DIR` to retain synthetic HTML and PDF samples
-for visual inspection. Without the browser variable, the normal test suite skips
-these checks.
+Set `DASHBOARD_PDF_ARTIFACT_DIR` to retain HTML, PDF, and screenshot artifacts.
 
 ## Dependencies and publication
 
-Runtime and development versions are pinned with `constraints.txt`; Windows build
-dependencies use `packaging/requirements-build.txt`. Upgrade the installer using
-`requirements-bootstrap.txt` first. Recheck dependency advisories when pins change.
+Versions are pinned in `constraints.txt`; build dependencies are in
+`packaging/requirements-build.txt`. Install `requirements-bootstrap.txt` before
+upgrading dependencies and recheck advisories when pins change.
 
-Before pushing, follow the [publication instructions](../README.md#publication)
-and [security checklist](../SECURITY.md).
+Follow the [publication checklist](../SECURITY.md#before-publishing) before pushing.
 
 ## Synthetic UI previews
 
-Generate a standalone preview without API access or local configuration:
-
 ```bash
-.venv/bin/python -m tools.synthetic_preview
-.venv/bin/python -m tools.synthetic_preview --records 10000 --scenario edge
-.venv/bin/python -m tools.synthetic_preview --scenario empty
+python -m tools.synthetic_preview
+python -m tools.synthetic_preview --records 10000 --scenario edge
+python -m tools.synthetic_preview --scenario empty
 ```
 
-The default is 5,000 records, `mixed`, seed `42`, and the current UTC minute.
-Use `--seed 123 --as-of 2026-11-12T17:00:00Z` to reproduce the same data.
-`--as-of` requires an explicit timezone. `--records` accepts zero; `empty`
-always generates zero records regardless of the count.
+Defaults: 5,000 records, `mixed`, seed `42`, and the current UTC minute. Use
+`--seed 123 --as-of 2026-11-12T17:00:00Z` for reproducible records; `--as-of`
+requires a timezone. `empty` produces no cases.
 
-Each run creates a fresh folder under the ignored `outputs/synthetic-preview`
-(or `--output-dir`) with an API-shaped JSON fixture, isolated SQLite history,
-and the standard HTML, Excel, and CSV exports. The command prints parameters and
-paths; open the printed HTML file directly in a browser. It never reads `.env`,
-desktop settings, saved reports, or live records; the roster and title are fictional.
+Each run writes a fixture, isolated SQLite history, HTML, Excel, and CSV into a
+fresh `outputs/synthetic-preview` folder, or `--output-dir`. Open the printed HTML
+path. The tool uses fictional data without loading local settings or accessing
+live records.
 
-`mixed` covers uneven workloads, age bands, action buckets, and recent and older
-completions with valid timestamps. `edge` adds long Unicode/HTML-sensitive labels,
-extra categories, missing fields, invalid chronology, and completeness warnings.
-Populated runs include 30 daily snapshots; empty runs contain only the current
-zero snapshot. Intake varies by weekday and over the season; processing durations
-and activity cadences vary by case. Historical snapshots use those same cases:
-submissions retain their dates and cases become completed at their closure time,
-so arrivals and closures reconcile with open-case counts. Interim workflow steps
-are approximate, not an event-log simulation; deliberately invalid edge timing is
-preserved in earlier snapshots. Only the final snapshot is exported. Record data
-is reproducible; run IDs and output folders vary.
+`mixed` includes the current and previous two calendar years, with most intake
+in the last 210 days. Older snapshots are monthly; the latest 30 days are daily.
+`edge` adds missing/invalid timing, long labels, and extra categories. Empty runs
+contain only the current zero snapshot. History uses the same cases and closure
+dates; interim workflow steps are approximate, not an event-log simulation.
 
-Run `python -m pytest -q tests/test_synthetic_preview.py` for generator and isolation
-checks. With `DASHBOARD_PDF_BROWSER=chrome` (or `msedge`), this also checks 10,000-record
-mixed and edge dashboards offline at desktop and narrow widths. Set
-`DASHBOARD_PDF_ARTIFACT_DIR` to retain previews and screenshots. Large scatterplots
-and observation tables may reveal rendering limits; the tool does not change the
-production dashboard or simulate real business accuracy.
+Run `python -m pytest -q tests/test_synthetic_preview.py` for generator checks.
+With the browser variable set, this also checks 10,000-case mixed and edge
+previews at desktop and phone widths.

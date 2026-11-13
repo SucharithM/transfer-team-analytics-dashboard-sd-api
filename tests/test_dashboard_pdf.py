@@ -169,7 +169,7 @@ def browser():
             "Set DASHBOARD_PDF_BROWSER=chrome or msedge to run real browser checks"
         )
     with sync_playwright() as playwright:
-        instance = playwright.chromium.launch(channel=channel)
+        instance = playwright.chromium.launch(channel=channel, ignore_default_args=["--hide-scrollbars"])
         yield instance
         instance.close()
 
@@ -345,6 +345,8 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
     # Exercise landscape's actual printable width, including formerly scrolling tables.
     page.set_viewport_size({"width": 980, "height": 740})
     assert page.locator("#save-pdf").is_hidden()
+    expect(page.locator(".legend-toggle")).to_be_hidden()
+    expect(page.locator(".legend-item:visible")).to_have_count(6)
     assert page.locator(".js-plotly-plot").first.is_hidden()
     assert page.locator(".pdf-chart").first.is_visible()
     assert page.evaluate(
@@ -371,6 +373,8 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     page.emulate_media(media="screen")
     assert page.locator("#save-pdf").is_enabled()
+    expect(page.locator(".legend-toggle")).to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#workflow-legend-content")).to_be_hidden()
     expect(page.locator("#save-pdf")).to_have_text(PAGE.save_pdf)
     expect(page.locator("#pdf-export-status")).to_be_empty()
     expect(page.locator(".pdf-spinner")).to_be_hidden()

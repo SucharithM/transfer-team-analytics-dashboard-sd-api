@@ -8,7 +8,7 @@ from workflow_dashboard.dashboard_html import (
 )
 
 
-def test_staff_member_e_uses_pinned_light_pink_in_staff_category_charts() -> None:
+def test_staff_category_charts_use_the_standard_roster_palette() -> None:
     roster = (
         "Staff Member A",
         "Staff Member B",
@@ -27,12 +27,17 @@ def test_staff_member_e_uses_pinned_light_pink_in_staff_category_charts() -> Non
         "Staff Member E",
         "staff",
         category_order=roster,
-    ) == "#F48FB1"
+    ) == "#db3b5a"
     assert _category_color(
         " Staff  Member E ",
         "staff",
         category_order=tuple(reversed(roster)),
-    ) == "#F48FB1"
+    ) == "#2563eb"
+    assert _category_color(
+        "New Colleague",
+        "staff",
+        category_order=(*roster[:4], "New Colleague"),
+    ) == "#db3b5a"
     assert _category_color(
         "Staff Member A",
         "staff",
@@ -60,8 +65,8 @@ def test_staff_member_e_uses_pinned_light_pink_in_staff_category_charts() -> Non
         zip(donut.data[0].customdata, donut.data[0].marker.colors)
     )
     bar_colors = dict(zip(bar.data[0].y, bar.data[0].marker.color))
-    assert donut_colors["Staff Member E"] == "#F48FB1"
-    assert bar_colors["Staff Member E"] == "#F48FB1"
+    assert donut_colors["Staff Member E"] == "#db3b5a"
+    assert bar_colors["Staff Member E"] == "#db3b5a"
 
 
 def test_staff_heatmap_keeps_shared_blue_intensity_scale() -> None:
@@ -75,7 +80,6 @@ def test_staff_heatmap_keeps_shared_blue_intensity_scale() -> None:
 
     heatmap = _submitted_by_date_heatmap(table)
     colorscale = [color for _, color in heatmap.data[0].colorscale]
-    assert "#F48FB1" not in colorscale
     assert colorscale == ["#e8f0ff", "#2563eb"]
 
 

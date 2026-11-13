@@ -102,8 +102,8 @@ def test_malformed_activity_is_normalized_and_flagged() -> None:
 @pytest.mark.parametrize(
     ("valid_count", "expected_value", "expected_warning", "expected_median"),
     [
-        (20, "2.0d", None, 2.0),
-        (19, "2.0d", None, 2.0),
+        (20, "2.0 days", None, 2.0),
+        (19, "2.0 days", None, 2.0),
         (18, "—", "18/20 valid · below 95%", None),
         (0, "—", "0/20 valid · below 95%", None),
     ],

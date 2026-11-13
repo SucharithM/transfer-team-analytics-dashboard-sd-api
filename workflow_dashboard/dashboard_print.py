@@ -71,6 +71,11 @@ PRINT_STYLES = """
         break-inside: avoid; break-after: avoid;
       }
       .section-title { font-size: 20px; }
+      .legend-toggle { display: none; }
+      .guide-ready .legend-content, .legend-content.is-collapsed {
+        grid-template-rows: 1fr; visibility: visible; transition: none;
+      }
+      .legend-content > div { overflow: visible; }
       .legend-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .kpi { min-height: 0; break-inside: avoid; }
@@ -78,6 +83,9 @@ PRINT_STYLES = """
       .dashboard-tabs .chart-container { break-inside: avoid; margin: 0 0 5mm !important; padding: 4mm; }
       .chart-container-wide .card-heading { position: static; }
       .chart-container-wide .js-plotly-plot { min-width: 0; max-width: 100%; }
+      .trend-grid .chart-container { display: block; min-height: 0; }
+      .trend-year-controls button:not([aria-pressed="true"]), .trend-year-status { display: none; }
+      .trend-year-controls .trend-year-chip { border: 0; background: transparent; padding: 0; min-height: 0; }
       .pdf-prepared .chart-container .js-plotly-plot { display: none; }
       .pdf-prepared .pdf-chart {
         display: block; width: 100%; height: auto; max-height: 130mm;
@@ -153,6 +161,7 @@ def export_script(json_for_script) -> str:
         const status = document.getElementById("pdf-export-status");
         const label = button.querySelector(".pdf-button-label");
         const exportControl = button.closest(".pdf-export");
+        const yearButtons = document.querySelectorAll('[data-trend-year]');
         const messages = MESSAGES;
         let busy = false;
         let snapshots = [];
@@ -163,6 +172,7 @@ def export_script(json_for_script) -> str:
           snapshots = [];
           busy = false;
           button.disabled = false;
+          yearButtons.forEach(item => { item.disabled = false; });
           button.removeAttribute("aria-busy");
           exportControl.classList.remove("is-preparing");
           label.textContent = messages.ready;
@@ -196,6 +206,7 @@ def export_script(json_for_script) -> str:
           if (busy) return;
           busy = true;
           button.disabled = true;
+          yearButtons.forEach(item => { item.disabled = true; });
           button.setAttribute("aria-busy", "true");
           exportControl.classList.add("is-preparing");
           label.textContent = messages.preparing;

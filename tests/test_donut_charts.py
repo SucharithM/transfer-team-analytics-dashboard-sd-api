@@ -90,8 +90,8 @@ def test_category_list_preserves_tiny_zero_and_unavailable_values():
     assert "Tiny &lt;category&gt;" in markup
     assert markup.count('aria-pressed="true"') == 3
     table.loc[1, "value"] = float("nan")
-    fig = _donut_chart(table, "label", "value", "Age", one_decimal=True, show_percent=False, value_suffix="d")
+    fig = _donut_chart(table, "label", "value", "Age", one_decimal=True, show_percent=False, value_suffix=" days")
     markup = _chart_category_list(fig, "aging_by_step")
     assert "<strong>—</strong>" in markup
-    assert "<strong>0.0d</strong>" in markup
+    assert "<strong>0.0 days</strong>" in markup
     assert "%" not in markup

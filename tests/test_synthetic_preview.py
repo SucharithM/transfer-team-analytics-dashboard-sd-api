@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from playwright.sync_api import expect
 
 from tools.synthetic_preview import generate_records, historical_population, main, preview
 from workflow_dashboard.analytics import build_analytics
 from workflow_dashboard.config import DashboardConfig
 from workflow_dashboard.normalization import normalize_records
+from workflow_dashboard.time_utils import dashboard_timestamp
 
 AS_OF = pd.Timestamp('2026-11-12T17:00:00Z')
 
@@ -25,14 +27,18 @@ def test_records_repeatability_and_coverage():
     analytics = build_analytics(frame, config=DashboardConfig(), generated_at=AS_OF)
     assert analytics.chart_tables['age_idle_action_matrix'].action_bucket.nunique() == 4
     assert analytics.chart_tables['workflow_aging_matrix'].query('count > 0').aging_band.nunique() == 6
-    assert analytics.chart_tables['closed_by_month'].shape[0] >= 6
+    assert analytics.chart_tables['closed_by_month'].shape[0] >= 24
+    expected_years = {2024, 2025, 2026}
+    assert set(frame.submitted_at.dt.year) == expected_years
+    assert set(frame.loc[frame.is_terminal, 'last_activity_at'].dt.year) == expected_years
     # Regressions for the two fixed idle bands and isolated completion-date spikes.
     open_cases = frame.loc[~frame.is_terminal]
     assert open_cases.idle_days.round(2).nunique() > 100
     assert open_cases.idle_days.quantile(0.95) > 5
     assert open_cases.age_days.median() < 30
     daily = analytics.chart_tables['daily_closures']
-    weekdays = daily.loc[daily.closed_date.dt.day_of_week < 5, 'closed_count']
+    recent = daily.closed_date.ge(AS_OF.tz_localize(None) - pd.Timedelta(days=209))
+    weekdays = daily.loc[recent & (daily.closed_date.dt.day_of_week < 5), 'closed_count']
     assert weekdays.gt(0).mean() > 0.95
     assert daily.closed_count.max() < frame.is_terminal.sum() * 0.04
     assert daily.closed_count.nunique() > 20
@@ -42,6 +48,18 @@ def test_records_repeatability_and_coverage():
     stressed = build_analytics(edge, config=DashboardConfig(), generated_at=AS_OF)
     assert stressed.snapshot_metrics['median_age_days'] is None
     assert stressed.snapshot_metrics['median_idle_days'] is None
+
+
+@pytest.mark.parametrize('as_of', ['2027-01-01T03:00:00Z', '2027-01-02T17:00:00Z'])
+def test_older_years_follow_eastern_calendar_at_new_year(as_of):
+    stamp = pd.Timestamp(as_of)
+    local_year = dashboard_timestamp(stamp).year
+    rows = generate_records(300, 42, stamp)
+    dates = [dashboard_timestamp(pd.Timestamp(row['submissionDate'])) for row in rows]
+    assert {local_year - 2, local_year - 1}.issubset({date.year for date in dates})
+    assert all(local_year - 2 <= date.year <= local_year for date in dates)
+    assert all(pd.Timestamp(row['submissionDate']) <= pd.Timestamp(row['lastActivityDate']) <= stamp
+               for row in rows)
 
 
 def test_history_uses_case_dates_and_reconciles_arrivals_and_closures():
@@ -97,10 +115,15 @@ def test_isolated_volume_preview(monkeypatch, tmp_path):
             with ZipFile(path) as archive:
                 assert all(sentinel.encode() not in archive.read(name) for name in archive.namelist())
     with sqlite3.connect(result['outputs']['history_db']) as db:
-        assert db.execute('SELECT count(*), count(distinct snapshot_date), count(distinct definition_hash), count(distinct backlog_count) FROM snapshot_metrics').fetchone()[:3] == (30, 30, 1)
+        assert db.execute('SELECT count(*), count(distinct snapshot_date), count(distinct definition_hash), count(distinct backlog_count) FROM snapshot_metrics').fetchone()[:3] == (64, 64, 1)
         assert db.execute('SELECT count(distinct backlog_count) FROM snapshot_metrics').fetchone()[0] > 1
         times = [pd.Timestamp(row[0]).tz_convert('America/New_York') for row in db.execute('SELECT generated_at FROM snapshot_metrics')]
         assert all(stamp.hour == 12 for stamp in times)
+        assert {stamp.year for stamp in times} == {2024, 2025, 2026}
+        for metric in ('backlog_count', 'median_age_days'):
+            years = db.execute(f'SELECT DISTINCT substr(snapshot_date, 1, 4) FROM snapshot_metrics WHERE {metric} > 0').fetchall()
+            assert {row[0] for row in years} == {'2024', '2025', '2026'}
+        assert sum(stamp.date() >= AS_OF.date() - pd.Timedelta(days=29) for stamp in times) == 30
     again = preview(records=0, as_of=AS_OF, output_dir=tmp_path / 'previews')
     assert again['outputs']['history_db'] != result['outputs']['history_db']
     with sqlite3.connect(again['outputs']['history_db']) as db:
@@ -123,7 +146,22 @@ def test_large_preview_browser(page, tmp_path, scenario):
     path = Path(result['outputs']['html'])
     print(f'{scenario}: {time.perf_counter() - started:.1f}s generation, {path.stat().st_size:,} HTML bytes; {path}')
     _open(page, path)
-    assert page.locator('#plot-backlog-trend').evaluate('(node) => node.data[0].x.length') == 30
+    page.locator('#tab-trends-panel').click()
+    for key in ('closed-by-month', 'daily-closures', 'backlog-trend', 'age-trend'):
+        plot = page.locator('#plot-' + key)
+        group = plot.locator('xpath=ancestor::div[contains(@class, "chart-container")]').locator('[role="group"]')
+        if scenario == 'edge' and key == 'age-trend':
+            continue  # Deliberately incomplete timing suppresses this metric.
+        assert group.locator('button').all_text_contents() == ['All years', '2026', '2025', '2024']
+        for year in ('2024', '2025', '2026'):
+            group.get_by_role('button', name=year, exact=True).click()
+            expect(group.get_by_role('button', name=year, exact=True)).to_have_attribute('aria-pressed', 'true')
+            assert plot.evaluate('p => p.data[0].x.every(x => new Date(x).getUTCFullYear() === Number(p.closest(".chart-container").querySelector("[aria-pressed=true]").textContent))')
+        group.get_by_role('button', name='All years', exact=True).click()
+        expect(group.get_by_role('button', name='All years', exact=True)).to_have_attribute('aria-pressed', 'true')
+        assert plot.evaluate('p => new Set(p.data[0].x.map(x => new Date(x).getUTCFullYear())).size') == 3
+        group.get_by_role('button', name='2026', exact=True).click()
+        expect(group.get_by_role('button', name='2026', exact=True)).to_have_attribute('aria-pressed', 'true')
     for width in (1440, 390):
         page.set_viewport_size({'width': width, 'height': 900})
         for tab in ('case-metrics-panel', 'aging-panel', 'risk-panel', 'evaluation-types-panel', 'trends-panel', 'staff-panel', 'staff-date-panel', 'exceptions-panel'):

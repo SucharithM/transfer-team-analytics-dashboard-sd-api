@@ -132,7 +132,7 @@ def test_last_activity_before_submission_is_excluded_from_idle_metrics() -> None
     permissive_idle = next(
         kpi for kpi in permissive.kpis if kpi.key == "typical_idle_time"
     )
-    assert permissive_idle.value == "1.0d"
+    assert permissive_idle.value == "1.0 days"
     assert permissive_idle.warning_caption is None
     assert permissive.snapshot_metrics["median_idle_days"] == pytest.approx(1.0)
     assert permissive.snapshot_metrics["idle_valid_count"] == 1

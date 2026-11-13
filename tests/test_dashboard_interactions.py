@@ -17,6 +17,123 @@ def _settled(page):
     }""")
 
 
+@pytest.mark.parametrize("width", [1440, 720, 390])
+def test_process_guide_reflows_without_gaps_or_chart_distortion(page, tmp_path, width):
+    page.set_viewport_size({"width": width, "height": 900})
+    _open(page, _report(tmp_path / "report.html"))
+    toggle = page.locator(".legend-toggle")
+    expect(toggle).to_have_accessible_name("Show guide")
+    guide = page.locator(".legend-card")
+    content = page.locator("#workflow-legend-content")
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+    expect(content).to_be_hidden()
+    collapsed = guide.bounding_box()["height"]
+    tabs_top = page.locator(".dashboard-tabs").evaluate("shell => shell.offsetTop")
+    assert collapsed < (150 if width == 390 else 110)
+    assert toggle.bounding_box()["height"] >= 44
+    toggle.focus()
+    toggle.press("Enter")
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    page.wait_for_function("() => !document.querySelector('.legend-card').getAnimations({subtree: true}).length")
+    expanded = guide.bounding_box()["height"]
+    assert expanded > collapsed + 120
+    expect(page.locator(".legend-item:visible")).to_have_count(6)
+    assert content.evaluate("el => el.scrollHeight <= el.clientHeight + 1")
+    assert page.locator(".dashboard-tabs").evaluate("shell => shell.offsetTop") - tabs_top == pytest.approx(expanded - collapsed, abs=1)
+    artifact_dir = os.environ.get("DASHBOARD_PDF_ARTIFACT_DIR")
+    if artifact_dir:
+        guide.screenshot(path=str(Path(artifact_dir) / f"guide-expanded-{width}.png"))
+    # Sample the actual layout while closing, including space reclaimed above the tabs.
+    heights = toggle.evaluate("""button => new Promise(resolve => {
+      button.click();
+      const guide = button.closest('.legend-card');
+      const heights = [];
+      const sample = () => {
+        heights.push(guide.getBoundingClientRect().height);
+        if (guide.getAnimations({subtree: true}).length) requestAnimationFrame(sample);
+        else resolve(heights);
+      };
+      requestAnimationFrame(sample);
+    })""")
+    assert any(collapsed + 1 < height < expanded - 1 for height in heights)
+    assert all(a >= b - 1 for a, b in zip(heights, heights[1:]))
+    assert guide.bounding_box()["height"] == pytest.approx(collapsed, abs=1)
+    assert page.locator(".dashboard-tabs").evaluate("shell => shell.offsetTop") == pytest.approx(tabs_top, abs=1)
+    expect(toggle).to_be_focused()
+    expect(content).to_be_hidden()
+    for tab in ("aging-panel", "risk-panel", "trends-panel", "staff-panel", "staff-date-panel", "exceptions-panel"):
+        page.locator("#tab-" + tab).click()
+        _settled(page)
+        assert page.locator(".js-plotly-plot:visible").evaluate_all("""plots => plots.every(plot =>
+          Math.abs(plot._fullLayout.width - plot.clientWidth) < 2)""")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    if artifact_dir:
+        guide.screenshot(path=str(Path(artifact_dir) / f"guide-collapsed-{width}.png"))
+
+
+def test_process_guide_handles_reversal_resize_reduced_motion_and_print(page, tmp_path):
+    _open(page, _report(tmp_path / "report.html"))
+    toggle = page.locator(".legend-toggle")
+    toggle.evaluate("""async button => {
+      button.click();
+      await new Promise(requestAnimationFrame);
+      button.click();
+      await new Promise(requestAnimationFrame);
+      button.click();
+    }""")
+    page.set_viewport_size({"width": 390, "height": 700})
+    page.wait_for_function("() => !document.querySelector('.legend-card').getAnimations({subtree: true}).length")
+    expect(toggle).to_have_attribute("aria-expanded", "true")
+    assert page.locator("#workflow-legend-content").evaluate("el => el.scrollHeight <= el.clientHeight + 1")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.emulate_media(reduced_motion="reduce")
+    toggle.press("Space")
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#workflow-legend-content")).to_be_hidden()
+    assert page.locator(".legend-card").evaluate("el => !el.getAnimations({subtree: true}).length")
+    page.emulate_media(reduced_motion="no-preference")
+    # Both browser printing and Save as PDF must finish an in-flight guide animation.
+    toggle.evaluate("button => button.click()")
+    page.evaluate("window.dispatchEvent(new Event('beforeprint'))")
+    assert page.locator(".legend-card").evaluate("el => !el.getAnimations({subtree: true}).length")
+    toggle.evaluate("button => button.click()")
+    _prepare(page)
+    page.emulate_media(media="print")
+    expect(toggle).to_be_hidden()
+    expect(page.locator(".legend-item:visible")).to_have_count(6)
+    page.evaluate("window.dispatchEvent(new Event('afterprint'))")
+    page.emulate_media(media="screen")
+    expect(toggle).to_have_attribute("aria-expanded", "false")
+    expect(page.locator("#workflow-legend-content")).to_be_hidden()
+
+
+def test_guide_resize_with_visible_scrollbars_and_reduced_motion(page, tmp_path):
+    page.set_viewport_size({"width": 1440, "height": 2000})
+    page.emulate_media(reduced_motion="reduce")
+    _open(page, _report(tmp_path / "scrollbars.html"))
+    page.add_style_tag(content="::-webkit-scrollbar { width: 17px; }")
+    page.locator("#tab-staff-panel").click()
+    _settled(page)
+    toggle = page.locator(".legend-toggle")
+    shell = page.locator(".dashboard-shell")
+    closed_height = shell.bounding_box()["height"]
+    toggle.evaluate("button => button.click()")
+    open_height = shell.bounding_box()["height"]
+    toggle.evaluate("button => button.click()")
+    page.set_viewport_size({"width": 1440, "height": int((closed_height + open_height) / 2)})
+    plot_fits = """() => {
+      const plot = document.getElementById('plot-submitted-by-workload');
+      return Math.abs(plot._fullLayout.width - plot.clientWidth) < 1;
+    }"""
+    page.wait_for_function(plot_fits)
+    for expanded in (True, False):
+        toggle.evaluate("button => button.click()")
+        expect(toggle).to_have_attribute("aria-expanded", str(expanded).lower())
+        page.wait_for_function("width => document.documentElement.clientWidth === width",
+                               arg=1423 if expanded else 1440)
+        page.wait_for_function(plot_fits)
+
+
 def _assert_framed(page, tip):
     expect(tip).to_be_visible()
     expect(tip).to_have_css("opacity", "1")

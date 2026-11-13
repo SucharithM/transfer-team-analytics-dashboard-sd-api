@@ -96,7 +96,7 @@ def test_half_tie_median_stays_raw_and_displays_consistently() -> None:
 
     assert analytics.snapshot_metrics["median_age_days"] == pytest.approx(23.05)
     assert aging.iloc[0]["age_days"] == pytest.approx(23.05)
-    assert typical_wait.value == "23.1d"
+    assert typical_wait.value == "23.1 days"
 
     bar = _bar_chart(
         aging,
@@ -297,7 +297,7 @@ def test_workbook_rounds_only_exported_values(tmp_path) -> None:
         cell.value: cell.column for cell in next(history_sheet.iter_rows(max_row=1))
     }
 
-    assert workbook["Summary"]["B8"].value == "23.1d"
+    assert workbook["Summary"]["B8"].value == "23.1 days"
     assert workbook["Summary"]["E14"].value == pytest.approx(23.1)
     assert history_sheet.cell(
         row=2, column=history_headers["median_age_days"]

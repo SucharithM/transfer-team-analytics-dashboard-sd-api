@@ -30,6 +30,71 @@ def test_navigation_preserves_report_headings_and_components(tmp_path):
     assert "Up to 100" not in markup
 
 
+@pytest.mark.parametrize('width', [1680, 1440, 1401, 1280, 1024, 720, 390])
+@pytest.mark.parametrize('scenario', ['sample', 'empty', 'stress'])
+def test_overview_cards_are_compact_with_centered_headings_and_values(page, tmp_path, width, scenario):
+    page.set_viewport_size({'width': width, 'height': 1000})
+    _open(page, _report(tmp_path / 'layout.html', scenario))
+    if scenario == 'stress':
+        page.locator('.kpi strong').first.evaluate("value => value.textContent = '10,000'")
+        page.locator('.kpi strong').nth(5).evaluate("value => value.textContent = '365.0 days'")
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    cards = page.locator('.kpi').evaluate_all('''cards => cards.map(card => {
+      const bounds = card.getBoundingClientRect();
+      const label = card.querySelector('.kpi-label').getBoundingClientRect();
+      const help = card.querySelector('.help-control').getBoundingClientRect();
+      const value = card.querySelector('strong').getBoundingClientRect();
+      return {top: bounds.top, width: bounds.width, height: bounds.height,
+        valueTop: value.top - bounds.top,
+        headingCentered: Math.abs((label.left + help.right) / 2 - bounds.left - bounds.width / 2) < 1,
+        headingAlign: getComputedStyle(card.querySelector('.kpi-heading')).textAlign,
+        headingJustify: getComputedStyle(card.querySelector('.kpi-heading')).justifyContent,
+        valueAlign: getComputedStyle(card.querySelector('strong')).textAlign,
+        centered: Math.abs(value.left + value.width / 2 - bounds.left - bounds.width / 2) < 1,
+        padding: getComputedStyle(card).padding,
+        fits: card.scrollWidth <= card.clientWidth};
+    })''')
+    for card in cards:
+        assert card['centered'] and card['fits']
+        assert card['padding'] == '8px 12px'
+        assert card['headingCentered']
+        assert card['headingAlign'] == 'center'
+        assert card['headingJustify'] == 'center'
+        assert card['valueAlign'] == 'center'
+        assert card['height'] <= (114 if width > 1400 else 100)
+        assert abs(card['height'] - cards[0]['height']) < 1
+        assert abs(card['width'] - cards[0]['width']) < 1
+        assert abs(card['valueTop'] - cards[0]['valueTop']) < 1
+    for group in ['sections', 'operations']:
+        link = page.locator(f'[data-tab-list="{group}"] a').first
+        assert link.evaluate(
+            'link => getComputedStyle(link).alignItems'
+        ) == 'flex-end'
+        assert link.bounding_box()['height'] == 34
+        assert link.evaluate('''link => {
+          const text = document.createRange();
+          text.selectNodeContents(link);
+          return text.getBoundingClientRect().top - link.getBoundingClientRect().top;
+        }''') <= 12
+    assert page.locator('.dashboard-tabs').evaluate(
+        'shell => getComputedStyle(shell).marginTop'
+    ) == '12px'
+    artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
+    if artifact_dir and scenario == 'sample':
+        page.locator('.kpi-grid').screenshot(path=str(Path(artifact_dir) / f'overview-{width}.png'))
+        page.locator('[data-tab-list="sections"]').screenshot(path=str(Path(artifact_dir) / f'tabs-{width}.png'))
+
+
+def test_compact_tabs_keep_large_touch_targets(browser, tmp_path):
+    with browser.new_context(has_touch=True, is_mobile=True,
+                             viewport={'width': 390, 'height': 700}, offline=True) as context:
+        page = context.new_page()
+        _open(page, _report(tmp_path / 'touch-tabs.html'))
+        for group in ['sections', 'operations']:
+            link = page.locator(f'[data-tab-list="{group}"] a').first
+            assert link.bounding_box()['height'] >= 44
+
+
 def test_navigation_keyboard_and_remembered_drilldown(page, tmp_path):
     _open(page, _report(tmp_path / "report.html"))
     expect(page.locator('#case-metrics-panel')).to_be_visible()
@@ -96,9 +161,9 @@ def test_age_donut_rounding_matches_legend_and_kpi(page, tmp_path):
                             owner_history=pd.DataFrame(), output_path=tmp_path / "rounding.html")
     _open(page, path)
     page.locator('#tab-aging-panel').click()
-    expect(page.locator('#plot-aging-by-step .slicetext').first).to_have_text('23.2d')
-    expect(page.locator('[aria-controls="plot-aging-by-step"] strong')).to_have_text('23.2d')
-    assert next(k.value for k in analytics.kpis if k.key == "typical_wait_time") == "23.2d"
+    expect(page.locator('#plot-aging-by-step .slicetext').first).to_have_text('23.2 days')
+    expect(page.locator('[aria-controls="plot-aging-by-step"] strong')).to_have_text('23.2 days')
+    assert next(k.value for k in analytics.kpis if k.key == "typical_wait_time") == "23.2 days"
 
 
 def test_drilldown_rounding_matches_chart_and_kpi(page, tmp_path):
@@ -107,7 +172,7 @@ def test_drilldown_rounding_matches_chart_and_kpi(page, tmp_path):
     path = render_dashboard(df=cases, analytics=analytics, history=pd.DataFrame(),
                             owner_history=pd.DataFrame(), output_path=tmp_path / "rounding.html")
     _open(page, path)
-    assert next(k.value for k in analytics.kpis if k.key == "typical_wait_time") == "2.6d"
+    assert next(k.value for k in analytics.kpis if k.key == "typical_wait_time") == "2.6 days"
     page.locator('#tab-risk-panel').click()
     page.locator('[data-action-bucket="young_active"]').click()
     cells = page.locator('#age-idle-action-rows td')
@@ -188,6 +253,8 @@ def test_report_content_remains_readable_without_javascript(browser, tmp_path):
         assert value.locator('[data-tab-panel="sections"]:visible').count() == 5
         expect(value.locator('.dashboard-tabbar').first).to_be_hidden()
         expect(value.locator('#problem-rows-table')).to_be_visible()
+        expect(value.locator('.legend-item:visible')).to_have_count(6)
+        expect(value.locator('.legend-toggle')).to_be_hidden()
 
 
 def test_failed_enhancement_restores_the_readable_report(page, tmp_path):
