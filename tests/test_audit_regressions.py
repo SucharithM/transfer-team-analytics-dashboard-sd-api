@@ -16,9 +16,9 @@ from .test_analytics_cohorts import build_sample_analytics
 
 def test_decimal_donut_keeps_raw_values_and_shared_display_strings():
     fig = _donut_chart(pd.DataFrame({'step': ['Review'], 'age_days': [23.15]}),
-                       'step', 'age_days', 'Age', one_decimal=True, value_suffix='d')
+                       'step', 'age_days', 'Age', one_decimal=True, value_suffix=' days')
     assert list(fig.data[0].values) == [23.15]
-    assert list(fig.data[0].text) == ['23.2d']
+    assert list(fig.data[0].text) == ['23.2 days']
     assert '%{text}' in fig.data[0].texttemplate
     assert '%{text}' in fig.data[0].hovertemplate
 

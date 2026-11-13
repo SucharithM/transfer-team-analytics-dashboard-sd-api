@@ -96,7 +96,7 @@ def test_missing_and_negative_ages_are_disclosed_without_reducing_step_total() -
     )
 
     assert rows["count"].sum() == 1
-    assert rows.loc[rows["aging_band"].eq("3–7d"), "count"].item() == 1
+    assert rows.loc[rows["aging_band"].eq("3–7 days"), "count"].item() == 1
     assert rows["step_total"].unique().tolist() == [3]
     assert rows["excluded_age_count"].unique().tolist() == [2]
     assert analytics.snapshot_metrics["age_valid_count"] == 1

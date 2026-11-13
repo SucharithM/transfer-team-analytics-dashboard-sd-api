@@ -17,13 +17,13 @@ def tab_bar(group: str, label: str, tabs: tuple[tuple[str, str], ...]) -> str:
 
 
 NAVIGATION_STYLES = """
-    .dashboard-tabs { --primary-tabs-height: 48px; margin-top: 22px; }
+    .dashboard-tabs { --primary-tabs-height: 37px; margin-top: 8px; }
     .tabs-ready .dashboard-tabs { overflow-anchor: none; }
     .tab-panels { display: flow-root; overflow-anchor: none; }
     .dashboard-tabbar { display: none; }
     .tabs-ready .dashboard-tabbar {
       display: flex; gap: 4px; overflow-x: auto; background: var(--surface);
-      border-bottom: 1px solid var(--border); padding: 4px;
+      border-bottom: 1px solid var(--border); padding: 2px 4px;
       position: sticky; top: var(--primary-tabs-height); z-index: 12;
       scrollbar-width: thin; scroll-margin-top: var(--primary-tabs-height);
     }
@@ -32,8 +32,8 @@ NAVIGATION_STYLES = """
       box-shadow: 0 3px 10px rgba(34, 49, 73, 0.07);
     }
     .dashboard-tabbar a {
-      display: flex; align-items: center; flex: 0 0 auto;
-      min-height: 44px; padding: 8px 12px; border-radius: 6px;
+      display: flex; align-items: flex-end; flex: 0 0 auto;
+      min-height: 32px; padding: 4px 12px; border-radius: 6px;
       color: var(--muted); font-size: 13px; font-weight: 600;
       text-decoration: none; white-space: nowrap;
       transition: color 120ms ease, background-color 120ms ease;
@@ -50,21 +50,22 @@ NAVIGATION_STYLES = """
     [data-tab-panel="operations"], [data-tab-panel="staff"] {
       scroll-margin-top: calc(var(--primary-tabs-height) + 72px);
     }
-    [data-tab-panel]:not(.dashboard-section) { margin-top: 12px; }
+    [data-tab-panel]:not(.dashboard-section) { margin-top: 8px; }
     .tabs-ready [data-tab-panel][hidden] { display: none; }
     .tabs-ready .table-container, .tabs-ready .action-matrix-controls,
     .tabs-ready .action-matrix-drilldown {
       scroll-margin-top: calc(var(--primary-tabs-height) + 72px);
     }
-    .dashboard-tabs .dashboard-section { margin-top: 22px; }
-    .dashboard-tabs .section-heading { margin-bottom: 10px; }
-    .dashboard-tabs .chart-container { padding: 15px 16px 10px; margin-bottom: 15px; }
+    .dashboard-tabs .dashboard-section { margin-top: 8px; }
+    .dashboard-tabs .chart-container { padding: 15px 16px 10px; margin-bottom: 12px; }
     .dashboard-tabs .table-container { padding: 15px 16px 16px; }
-    .case-metrics-grid, .aging-grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+    .case-metrics-grid, .aging-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
     .case-metrics-grid .chart-container, .aging-grid .chart-container { margin-bottom: 0; }
     .aging-grid .chart-container-wide { overflow-x: auto; }
-    .dashboard-tabs .trend-grid { gap: 16px; }
     #problem-rows-table .table-scroll { max-height: 420px; overflow: auto; }
+    @media (pointer: coarse) {
+      .dashboard-tabbar a { min-height: 44px; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .dashboard-tabbar a { transition: none; }
     }

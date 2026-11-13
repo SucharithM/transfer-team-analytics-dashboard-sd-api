@@ -536,11 +536,11 @@ def _aging_by_step_chart(
         title,
         value_label=content.CHART_LABELS.median_age,
         one_decimal=True,
-        value_suffix="d",
+        value_suffix=" days",
         show_percent=False,
         center_text=format_one_decimal(
             overall_age_days,
-            suffix="d",
+            suffix=" days",
             missing="—",
         ),
         color_dimension="workflow_step",
@@ -1123,7 +1123,7 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
         y=1.07,
         xref="x",
         yref="paper",
-        text=f"<b>{backlog_days:g}d backlog</b>",
+        text=f"<b>{backlog_days:g} days backlog</b>",
         showarrow=False,
         xanchor="right",
         font=dict(color=PRIMARY_DARK, size=11),
@@ -1133,7 +1133,7 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
         y=1.07,
         xref="x",
         yref="paper",
-        text=f"<b>{old_days:g}d aged</b>",
+        text=f"<b>{old_days:g} days aged</b>",
         showarrow=False,
         xanchor="left",
         font=dict(color="#a95516", size=11),
@@ -1742,12 +1742,12 @@ def _evaluation_type_summary_html(summary: pd.DataFrame) -> str:
         )
         median_open_age = format_one_decimal(
             row["median_open_age_days"],
-            suffix="d",
+            suffix=" days",
             missing="—",
         )
         median_completion = format_one_decimal(
             row["median_completion_days"],
-            suffix="d",
+            suffix=" days",
             missing="—",
         )
         cells = [
@@ -2104,8 +2104,8 @@ def render_dashboard(
       margin: 18px 0 0;
       max-width: 980px;
     }}
-    .dashboard-section {{ margin-top: 30px; }}
-    .section-heading {{ margin-bottom: 14px; }}
+    .dashboard-section {{ margin-top: 16px; }}
+    .section-heading {{ margin-bottom: 8px; }}
     .section-title {{
       color: var(--text);
       font-size: 23px;
@@ -2119,7 +2119,8 @@ def render_dashboard(
     }}
     .kpi-grid {{
       display: grid;
-      gap: 14px;
+      gap: 12px;
+      grid-auto-rows: 1fr;
       grid-template-columns: repeat(7, minmax(0, 1fr));
     }}
     .kpi {{
@@ -2127,8 +2128,8 @@ def render_dashboard(
       border: 1px solid var(--border);
       border-radius: 8px;
       box-shadow: 0 4px 14px rgba(34, 49, 73, 0.05);
-      min-height: 122px;
-      padding: 17px 18px;
+      padding: 8px 12px;
+      text-align: center;
       position: relative;
     }}
     .kpi:hover,
@@ -2136,8 +2137,10 @@ def render_dashboard(
     .kpi-heading {{
       align-items: flex-start;
       display: flex;
-      gap: 6px;
       justify-content: space-between;
+      gap: 6px;
+      min-height: 32.5px;
+      text-align: left;
     }}
     .kpi-label {{
       color: var(--muted);
@@ -2151,7 +2154,7 @@ def render_dashboard(
       font-size: clamp(22px, 1.8vw, 28px);
       letter-spacing: 0;
       line-height: 1.15;
-      margin-top: 10px;
+      margin-top: 6px;
       overflow-wrap: anywhere;
     }}
     .kpi-warning {{
@@ -2160,14 +2163,14 @@ def render_dashboard(
       font-size: 12px;
       font-weight: 700;
       line-height: 1.3;
-      margin-top: 7px;
+      margin-top: 4px;
     }}
     .kpi-link {{
       color: var(--primary-dark);
       display: inline-block;
       font-size: 13px;
       font-weight: 700;
-      margin-top: 10px;
+      margin-top: 4px;
       text-decoration: none;
     }}
     .kpi-link:hover {{ text-decoration: underline; }}
@@ -2216,7 +2219,7 @@ def render_dashboard(
       position: relative;
     }}
     .chart-container {{
-      margin-bottom: 20px;
+      margin-bottom: 12px;
       overflow: hidden;
       padding: 20px 22px 14px;
     }}
@@ -2321,7 +2324,7 @@ def render_dashboard(
     .current-open-grid,
     .trend-grid {{
       display: grid;
-      gap: 22px;
+      gap: 12px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
     .current-open-grid .chart-container,
@@ -2584,6 +2587,7 @@ def render_dashboard(
     .jump-to-top:hover {{ text-decoration: underline; }}
     @media (max-width: 1400px) {{
       .kpi-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+      .kpi-heading {{ min-height: 18px; }}
     }}
     @media (max-width: 1050px) {{
       .dashboard-shell {{ padding: 24px 22px 40px; }}
@@ -2610,7 +2614,6 @@ def render_dashboard(
     @media (max-width: 520px) {{
       .dashboard-shell {{ padding: 14px 12px 30px; }}
       .kpi-grid {{ grid-template-columns: 1fr; }}
-      .kpi {{ min-height: 106px; }}
       .card-heading h2 {{ font-size: 16px; }}
       .section-title {{ font-size: 21px; }}
       .chart-container {{

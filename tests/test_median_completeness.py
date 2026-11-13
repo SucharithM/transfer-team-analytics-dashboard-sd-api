@@ -99,7 +99,7 @@ def test_wait_median_at_threshold_keeps_clean_kpi_value() -> None:
     )
 
     wait = _kpi(analytics, "typical_wait_time")
-    assert wait.value == "1.0d"
+    assert wait.value == "1.0 days"
     assert wait.warning_caption is None
     assert analytics.snapshot_metrics["median_age_days"] == pytest.approx(1.0)
     assert analytics.snapshot_metrics["age_valid_count"] == 19
@@ -137,14 +137,14 @@ def test_age_by_step_keeps_undercovered_group_without_showing_sample_sizes() -> 
     assert list(trace.labels) == ["Faculty Review", "Review"]
     assert list(trace.values) == [1.0, 0.0]
     assert trace.texttemplate == "%{text}"
-    assert list(trace.text) == ["1.0d", "—"]
+    assert list(trace.text) == ["1.0 days", "—"]
     assert "Median Case-Open Age: %{text}" in trace.hovertemplate
     assert "percent" not in trace.texttemplate
     assert "Share" not in trace.hovertemplate
     assert "valid" not in trace.hovertemplate
-    assert chart.layout.annotations[0].text.startswith("<b>1.0d</b>")
+    assert chart.layout.annotations[0].text.startswith("<b>1.0 days</b>")
     assert "Overall median" in chart.layout.annotations[0].text
-    assert chart.layout.meta["category_values"] == ["1.0d", "—"]
+    assert chart.layout.meta["category_values"] == ["1.0 days", "—"]
 
 
 def test_monthly_completion_keeps_volume_and_suppresses_one_of_one_hundred() -> None:
