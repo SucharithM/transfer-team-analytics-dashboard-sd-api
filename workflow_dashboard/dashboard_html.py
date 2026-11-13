@@ -33,6 +33,7 @@ MUTED = "#5f6f85"
 BORDER = "#dce4ee"
 BG = "#eef2f7"
 SURFACE_MUTED = "#f8fafc"
+FONT_FAMILY = "Segoe UI, Inter, system-ui, -apple-system, sans-serif"
 COLORWAY = ["#2563eb", "#0f9f8f", "#7c3aed", "#e8792e", "#db3b5a", "#0891b2", "#64748b"]
 CATEGORY_COLORWAY = (
     "#2563eb",
@@ -53,7 +54,6 @@ STATUS_COLORS = {
     "no status": "#64748b",
 }
 STAFF_COLORS = {
-    "staff member e": "#F48FB1",
     content.OTHER_SUBMITTERS.casefold(): "#475569",
     content.MISSING_SUBMITTER.casefold(): "#737373",
 }
@@ -107,11 +107,7 @@ def _category_color(
         if key in STAFF_COLORS:
             return STAFF_COLORS[key]
         staff_colors = {
-            _category_key(member): (
-                "#F48FB1"
-                if index == 4
-                else CATEGORY_COLORWAY[index % len(CATEGORY_COLORWAY)]
-            )
+            _category_key(member): CATEGORY_COLORWAY[index % len(CATEGORY_COLORWAY)]
             for index, member in enumerate(category_order)
         }
         return staff_colors.get(key, _stable_fallback_color(value))
@@ -153,6 +149,7 @@ def _empty_figure(title: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
         title=dict(text=""),
+        font=dict(family=FONT_FAMILY),
         annotations=[
             dict(
                 text=content.COMMON.empty_figure,
@@ -178,7 +175,7 @@ def _base_layout(fig: go.Figure, title: str, *, height: int = 340) -> go.Figure:
     fig.update_layout(
         title=dict(text=""),
         font=dict(
-            family="Segoe UI, Inter, system-ui, -apple-system, sans-serif",
+            family=FONT_FAMILY,
             color=TEXT,
             size=13,
         ),
@@ -187,7 +184,8 @@ def _base_layout(fig: go.Figure, title: str, *, height: int = 340) -> go.Figure:
         margin=dict(l=150, r=42, t=15, b=44),
         height=math.ceil(height * 0.75),
         hoverlabel=dict(
-            bgcolor=TEXT, bordercolor=TEXT, font=dict(color="#ffffff", size=12)
+            bgcolor=TEXT, bordercolor=TEXT,
+            font=dict(family=FONT_FAMILY, color="#ffffff", size=12),
         ),
         legend=dict(
             orientation="h",
@@ -503,13 +501,17 @@ def _line_chart(
     )
     _base_layout(fig, title, height=310)
     fig.update_layout(margin=dict(l=72, r=36, t=15, b=44))
-    fig.update_xaxes(title=content.CHART_LABELS.date)
+    fig.update_xaxes(
+        title=content.CHART_LABELS.date,
+        tickformat="%b %-d\n%Y" if local_run_times.dt.year.nunique() > 1 else "%b %-d",
+        dtick=86400000 if (local_run_times.max() - local_run_times.min()).days <= 7 else None,
+    )
     if len(history) == 1:
         day = local_run_times.dt.tz_localize(None).dt.normalize().iloc[0]
         fig.update_xaxes(
             range=[day - pd.Timedelta(days=1), day + pd.Timedelta(days=1)],
             tickvals=[day],
-            tickformat="%b %d, %Y",
+            tickformat="%b %-d",
         )
     fig.update_yaxes(title=y_title, rangemode="tozero")
     return fig
@@ -659,7 +661,7 @@ def _recent_closures_chart(
         margin=dict(l=72, r=36, t=15, b=44),
         showlegend=False,
     )
-    fig.update_xaxes(title=content.CHART_LABELS.date)
+    fig.update_xaxes(title=content.CHART_LABELS.date, tickformat="%b %-d")
     fig.update_yaxes(
         title=content.CHART_LABELS.cases_closed,
         rangemode="tozero",
@@ -723,7 +725,7 @@ def _closed_by_month_trend(table: pd.DataFrame) -> go.Figure:
             y=table["closed_count"],
             name=content.CHART_LABELS.closed_cases,
             marker=dict(color=PRIMARY),
-            text=table["closed_count"],
+            text=table["closed_count"].astype(str),
             textposition="outside",
             cliponaxis=False,
             customdata=list(zip(median_days, coverage_labels)),
@@ -740,7 +742,12 @@ def _closed_by_month_trend(table: pd.DataFrame) -> go.Figure:
         type="date",
         tickmode="array",
         tickvals=table["closed_month_start"],
-        ticktext=table["closed_month_label"],
+        ticktext=[
+            date.strftime("%b %y")
+            + (content.COMMON.month_to_date_suffix
+               if label.endswith(content.COMMON.month_to_date_suffix) else "")
+            for date, label in zip(table["closed_month_start"], table["closed_month_label"])
+        ],
         automargin=True,
     )
     fig.update_yaxes(
@@ -1194,6 +1201,125 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
     return fig
 
 
+TREND_KEYS = {
+    "closed_by_month", "daily_closures", "recent_closures", "backlog_trend", "age_trend",
+}
+
+
+def _trend_views(fig: go.Figure, key: str) -> dict[str, go.Figure]:
+    """Slice already calculated series, keeping rolling averages and hover data intact."""
+    legend_space = 60 if key == "daily_closures" and fig.data else 0
+    fig.update_layout(
+        height=360 + legend_space,
+        margin=dict(l=72, r=36, t=15 + legend_space, b=64, autoexpand=key == "closed_by_month"),
+    )
+    views = {"all": fig}
+    if key == "recent_closures" or not fig.data:
+        return views
+    years = sorted(
+        {pd.Timestamp(date).year for trace in fig.data for date in trace.x}, reverse=True
+    )
+    for year in years:
+        view = go.Figure(fig)
+        for original, trace in zip(fig.data, view.data):
+            indices = [
+                i for i, date in enumerate(original.x) if pd.Timestamp(date).year == year
+            ]
+            for field in ("x", "y", "text", "customdata"):
+                values = getattr(original, field)
+                if (values is not None and not isinstance(values, str)
+                        and len(values) == len(original.x)):
+                    setattr(trace, field, [values[i] for i in indices])
+        view.update_xaxes(autorange=True, range=None)
+        if key == "closed_by_month":
+            pairs = [
+                (date, label)
+                for date, label in zip(fig.layout.xaxis.tickvals, fig.layout.xaxis.ticktext)
+                if pd.Timestamp(date).year == year
+            ]
+            view.update_xaxes(tickvals=[p[0] for p in pairs], ticktext=[p[1] for p in pairs])
+        elif key in {"backlog_trend", "age_trend"}:
+            view.update_xaxes(tickformat="%b %-d")
+            dates = pd.DatetimeIndex(view.data[0].x)
+            view.update_xaxes(
+                dtick=86400000 if (dates.max() - dates.min()).days <= 7 else None
+            )
+            if len(dates) == 1:
+                day = pd.Timestamp(dates[0])
+                view.update_xaxes(
+                    autorange=False, tickvals=[day],
+                    range=[day - pd.Timedelta(days=1), day + pd.Timedelta(days=1)],
+                )
+        views[str(year)] = view
+    return views
+
+
+def _trend_controls(
+    views: dict[str, go.Figure], key: str,
+    context: content.PresentationContext = content.PresentationContext(),
+) -> str:
+    years = [year for year in views if year != "all"]
+    if not years:
+        return ""
+    title = html.escape(content.CHART_CONTENT[key].formatted(context).title)
+    if len(years) == 1:
+        return (
+            '<div class="trend-year-controls"><span>Year</span>'
+            f'<span class="trend-year-chip">{years[0]}</span></div>'
+        )
+    plot_id = f"plot-{key.replace('_', '-')}"
+    buttons = "".join(
+        f'<button type="button" class="trend-year-chip" data-trend-year="{year}" '
+        f'aria-controls="{plot_id}" aria-pressed="{str(year == years[0]).lower()}">'
+        f'{"All years" if year == "all" else year}</button>'
+        for year in views
+    )
+    payload = _json_for_script(
+        {year: json.loads(view.to_json()) for year, view in views.items()}
+    )
+    return (
+        f'<div class="trend-year-controls" role="group" aria-label="Year for {title}">'
+        f'<span>Year</span>{buttons}<span class="trend-year-status" role="status"></span></div>'
+        f'<script type="application/json" id="{plot_id}-years">{payload}</script>'
+    )
+
+
+TREND_SCRIPT = """
+<script>
+(() => {
+  const pending = new Set();
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-trend-year]');
+    if (!button || button.getAttribute('aria-pressed') === 'true') return;
+    const group = button.closest('.trend-year-controls');
+    if (group.getAttribute('aria-busy') === 'true') return;
+    const plot = document.getElementById(button.getAttribute('aria-controls'));
+    const views = JSON.parse(document.getElementById(plot.id + '-years').textContent);
+    const view = views[button.dataset.trendYear];
+    group.setAttribute('aria-busy', 'true');
+    plot.dataset.pdfReady = 'false';
+    const update = Plotly.react(plot, view.data, view.layout, plot._context).then(() => {
+      group.querySelectorAll('button').forEach(item =>
+        item.setAttribute('aria-pressed', String(item === button)));
+      group.querySelector('[role="status"]').textContent = '';
+    }).catch(() => {
+      group.querySelector('[role="status"]').textContent = 'Unable to change year. Try again.';
+    }).finally(() => {
+      group.removeAttribute('aria-busy');
+      plot.dataset.pdfReady = 'true';
+      document.dispatchEvent(new Event('dashboard-chart-ready'));
+      pending.delete(update);
+    });
+    pending.add(update);
+  });
+  document.addEventListener('dashboard-prepare-print', event => {
+    event.detail.pending.push(Promise.all(Array.from(pending)));
+  });
+})();
+</script>
+"""
+
+
 def _plot_divs(
     analytics: AnalyticsBundle,
     history: pd.DataFrame,
@@ -1279,6 +1405,11 @@ def _plot_divs(
     divs: dict[str, str] = {}
     include_plotlyjs: bool | str = True
     for key, fig in figures.items():
+        controls = ""
+        if key in TREND_KEYS:
+            views = _trend_views(fig, key)
+            controls = _trend_controls(views, key, analytics.presentation)
+            fig = list(views.values())[1] if len(views) > 1 else fig
         divs[key] = to_html(
             fig,
             include_plotlyjs=include_plotlyjs,
@@ -1315,6 +1446,8 @@ def _plot_divs(
                 + _chart_category_list(fig, key)
                 + "</div>"
             )
+        if key in TREND_KEYS:
+            divs[key] = controls + '<div class="trend-plot">' + divs[key] + '</div>'
         include_plotlyjs = False
     return divs
 
@@ -1427,10 +1560,23 @@ def _process_guide_html() -> str:
     return f"""
     <section class="dashboard-section workflow-legend" aria-labelledby="workflow-legend-title">
       <div class="legend-card">
-        <span class="eyebrow">{html.escape(legend.eyebrow)}</span>
-        <h2 class="section-title" id="workflow-legend-title">{html.escape(legend.title)}</h2>
-        <p class="section-copy">{html.escape(legend.description)}</p>
-        <div class="legend-grid">{items}</div>
+        <div class="legend-heading">
+          <div>
+            <span class="eyebrow">{html.escape(legend.eyebrow)}</span>
+            <h2 class="section-title" id="workflow-legend-title">{html.escape(legend.title)}</h2>
+          </div>
+          <button type="button" class="legend-toggle" aria-expanded="true"
+                  aria-controls="workflow-legend-content" hidden>
+            <span>Hide guide</span><svg width="16" height="16" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="legend-content" id="workflow-legend-content">
+          <div>
+            <p class="section-copy">{html.escape(legend.description)}</p>
+            <div class="legend-grid">{items}</div>
+          </div>
+        </div>
       </div>
     </section>
     """
@@ -1557,7 +1703,11 @@ def _age_idle_action_matrix_card(
               <p id="age-idle-action-drilldown-summary" aria-live="polite"></p>
             </div>
             <button type="button" class="action-drilldown-clear" id="age-idle-action-clear">
-              Clear
+              <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false"
+                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="m6 6 12 12M6 18 18 6"/>
+              </svg>
+              <span>Close List</span>
             </button>
           </div>
           <div class="action-drilldown-scroll">
@@ -1921,6 +2071,7 @@ def render_dashboard(
             + TOOLTIP_SCRIPT
             + NAVIGATION_SCRIPT
             + CATEGORY_SCRIPT
+            + TREND_SCRIPT
             + print_script
         ),
         quote=True,
@@ -1937,6 +2088,7 @@ def render_dashboard(
             + TOOLTIP_SCRIPT
             + NAVIGATION_SCRIPT
             + CATEGORY_SCRIPT
+            + TREND_SCRIPT
             + print_script
         ),
         quote=True,
@@ -2018,7 +2170,7 @@ def render_dashboard(
     body {{
       background: var(--background);
       color: var(--text);
-      font-family: Segoe UI, Inter, system-ui, -apple-system, sans-serif;
+      font-family: {FONT_FAMILY};
       letter-spacing: 0;
       line-height: 1.5;
       margin: 0;
@@ -2186,8 +2338,46 @@ def render_dashboard(
       border: 1px solid var(--border);
       border-radius: 12px;
       box-shadow: var(--shadow);
-      padding: 24px 28px 22px;
+      padding: 16px 22px;
     }}
+    .legend-heading {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    .legend-heading > div {{ min-width: 0; }}
+    .legend-heading .section-title {{ font-size: 18px; }}
+    .legend-toggle {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      gap: 8px;
+      width: 124px;
+      min-height: 44px;
+      padding: 8px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--primary-dark);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+    }}
+    .legend-toggle[hidden] {{ display: none; }}
+    .legend-toggle:hover {{ background: var(--primary-soft); }}
+    .legend-toggle:focus-visible {{ outline: 3px solid var(--primary); outline-offset: 3px; }}
+    .legend-toggle svg {{ flex: 0 0 auto; transform: rotate(180deg); transition: transform 220ms ease; }}
+    .legend-toggle[aria-expanded="false"] svg {{ transform: rotate(0); }}
+    .legend-content {{ display: grid; grid-template-rows: 1fr; visibility: visible; }}
+    .guide-ready .legend-content {{
+      transition: grid-template-rows 220ms cubic-bezier(0.2, 0, 0, 1), visibility 220ms;
+    }}
+    .legend-content.is-collapsed {{ grid-template-rows: 0fr; visibility: hidden; }}
+    .legend-content > div {{ min-height: 0; overflow: hidden; }}
+    .legend-content .section-copy {{ margin-top: 12px; }}
     .legend-grid {{
       display: grid;
       gap: 18px 56px;
@@ -2256,6 +2446,7 @@ def render_dashboard(
     .chart-container .svg-container {{
       max-width: 100%;
     }}
+    .chart-container .js-plotly-plot .modebar-btn {{ font-family: {FONT_FAMILY}; }}
     .help-control {{
       display: inline-flex;
       flex: 0 0 auto;
@@ -2269,7 +2460,7 @@ def render_dashboard(
       color: var(--primary-dark);
       cursor: help;
       display: inline-flex;
-      font-family: Georgia, serif;
+      font-family: inherit;
       font-size: 12px;
       font-style: italic;
       font-weight: bold;
@@ -2397,6 +2588,7 @@ def render_dashboard(
     }}
     .action-group-button:disabled {{
       cursor: default;
+      border-top-color: var(--border);
       opacity: 0.55;
     }}
     .action-matrix-drilldown {{
@@ -2423,15 +2615,19 @@ def render_dashboard(
       margin: 2px 0 0;
     }}
     .action-drilldown-clear {{
+      align-items: center;
       background: var(--surface);
       border: 1px solid var(--border-strong);
       border-radius: 7px;
       color: var(--primary-dark);
       cursor: pointer;
+      display: inline-flex;
       font: inherit;
       font-size: 13px;
       font-weight: 700;
+      gap: 6px;
       padding: 7px 11px;
+      white-space: nowrap;
     }}
     .action-drilldown-scroll {{
       max-height: 360px;
@@ -2446,6 +2642,14 @@ def render_dashboard(
     .action-drilldown-table td:nth-child(4) {{
       text-align: right;
     }}
+    .trend-grid .chart-container {{ display: flex; flex-direction: column; }}
+    .trend-plot {{ margin-top: auto; min-width: 0; }}
+    .trend-year-controls {{ display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0; font-size: 12px; }}
+    .trend-year-chip {{ border: 1px solid var(--border); border-radius: 16px; padding: 5px 10px; background: var(--surface-muted); color: var(--text); font: inherit; }}
+    button.trend-year-chip {{ cursor: pointer; }}
+    .trend-year-chip[aria-pressed="true"] {{ background: var(--primary-soft); border-color: var(--primary); }}
+    .trend-year-chip:focus-visible {{ outline: 2px solid var(--primary); outline-offset: 2px; }}
+    @media (pointer: coarse) {{ .trend-year-chip {{ min-height: 44px; }} }}
     .trend-grid .chart-container:last-child:nth-child(odd) {{ grid-column: 1 / -1; }}
     .table-card-header,
     .table-card-footer {{
@@ -2620,6 +2824,7 @@ def render_dashboard(
     }}
     @media (max-width: 520px) {{
       .dashboard-shell {{ padding: 14px 12px 30px; }}
+      .legend-card {{ padding: 14px 16px; }}
       .kpi-grid {{ grid-template-columns: 1fr; }}
       .card-heading h2 {{ font-size: 16px; }}
       .section-title {{ font-size: 21px; }}
@@ -2632,6 +2837,7 @@ def render_dashboard(
     }}
     @media (prefers-reduced-motion: reduce) {{
       html {{ scroll-behavior: auto; }}
+      .guide-ready .legend-content, .legend-toggle svg {{ transition: none; }}
     }}
 {NAVIGATION_STYLES}
 {PRINT_STYLES}
@@ -2781,6 +2987,7 @@ def render_dashboard(
   {TOOLTIP_SCRIPT}
   {NAVIGATION_SCRIPT}
   {CATEGORY_SCRIPT}
+  {TREND_SCRIPT}
   {print_script}
 </body>
 </html>

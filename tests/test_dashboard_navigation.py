@@ -78,7 +78,7 @@ def test_overview_cards_are_compact_with_centered_headings_and_values(page, tmp_
         }''') <= 12
     assert page.locator('.dashboard-tabs').evaluate(
         'shell => getComputedStyle(shell).marginTop'
-    ) == '8px'
+    ) == '12px'
     artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
     if artifact_dir and scenario == 'sample':
         page.locator('.kpi-grid').screenshot(path=str(Path(artifact_dir) / f'overview-{width}.png'))
@@ -253,6 +253,8 @@ def test_report_content_remains_readable_without_javascript(browser, tmp_path):
         assert value.locator('[data-tab-panel="sections"]:visible').count() == 5
         expect(value.locator('.dashboard-tabbar').first).to_be_hidden()
         expect(value.locator('#problem-rows-table')).to_be_visible()
+        expect(value.locator('.legend-item:visible')).to_have_count(6)
+        expect(value.locator('.legend-toggle')).to_be_hidden()
 
 
 def test_failed_enhancement_restores_the_readable_report(page, tmp_path):

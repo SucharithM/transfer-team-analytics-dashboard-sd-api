@@ -17,7 +17,7 @@ def tab_bar(group: str, label: str, tabs: tuple[tuple[str, str], ...]) -> str:
 
 
 NAVIGATION_STYLES = """
-    .dashboard-tabs { --primary-tabs-height: 37px; margin-top: 8px; }
+    .dashboard-tabs { --primary-tabs-height: 37px; margin-top: 12px; }
     .tabs-ready .dashboard-tabs { overflow-anchor: none; }
     .tab-panels { display: flow-root; overflow-anchor: none; }
     .dashboard-tabbar { display: none; }
@@ -75,6 +75,26 @@ NAVIGATION_STYLES = """
 NAVIGATION_SCRIPT = """
   <script>
     (() => {
+      const guide = document.querySelector('.legend-card');
+      const guideToggle = guide.querySelector('.legend-toggle');
+      const guideContent = document.getElementById(guideToggle.getAttribute('aria-controls'));
+      const setGuideExpanded = expanded => {
+        guideToggle.setAttribute('aria-expanded', String(expanded));
+        guideToggle.querySelector('span').textContent = expanded ? 'Hide guide' : 'Show guide';
+        guideContent.classList.toggle('is-collapsed', !expanded);
+      };
+      setGuideExpanded(false);
+      guideToggle.hidden = false;
+      // Enable transitions only after the initial collapsed layout is established.
+      guideContent.getBoundingClientRect();
+      guide.classList.add('guide-ready');
+      guideToggle.addEventListener('click', () => {
+        document.dispatchEvent(new Event('dashboard-panel-change'));
+        setGuideExpanded(guideToggle.getAttribute('aria-expanded') !== 'true');
+      });
+      const finishGuide = () => guide.getAnimations({ subtree: true }).forEach(animation => animation.finish());
+      document.addEventListener('dashboard-prepare-print', finishGuide);
+      window.addEventListener('beforeprint', finishGuide);
       const shell = document.querySelector('.dashboard-tabs');
       const plots = Array.from(document.querySelectorAll('.chart-container .js-plotly-plot'));
       const reportLabels = new Map(Array.from(shell.querySelectorAll('[data-tab-panel]'),
@@ -309,7 +329,7 @@ NAVIGATION_SCRIPT = """
           const measure = () => shell.style.setProperty('--primary-tabs-height', primary.offsetHeight + 'px');
           document.body.classList.add('tabs-ready');
           measure();
-          new ResizeObserver(measure).observe(primary);
+          new ResizeObserver(() => { measure(); resizeVisible(); }).observe(primary);
           // History alignment is handled here, without a competing browser jump.
           history.scrollRestoration = 'manual';
           // User scrolling takes precedence over an automatic alignment in progress.
@@ -320,6 +340,7 @@ NAVIGATION_SCRIPT = """
                 && !event.target.closest('[data-tab-list]')) finish();
           });
           window.addEventListener('resize', () => { finish(); resizeVisible(); });
+          guideToggle.addEventListener('click', finish);
           matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', finish);
           document.addEventListener('dashboard-prepare-print', event => {
             finish();

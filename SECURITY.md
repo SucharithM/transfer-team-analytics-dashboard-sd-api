@@ -1,43 +1,44 @@
 # Security
 
-Do not put credentials, live records, generated reports, browser traces, or student/staff identifiers in public issues.
+Keep credentials, live records, reports, browser traces, and student/staff
+identifiers out of public issues and releases. Configure authorized HTTPS
+endpoints and staff names only in ignored local settings; bundled examples must
+stay synthetic.
 
-The bundled fixture and roster are synthetic. Configure live endpoints and staff names only in ignored local configuration. Browser authentication uses a fresh context and captures credentials only for the configured HTTPS endpoint. All live API modes reject redirects and credential echoes. Only configure an endpoint you are authorized to use.
+Browser authentication uses a fresh context and captures credentials only for
+the configured endpoint. Live API modes reject redirects and credential echoes.
+Do not enable browser/network tracing with live authentication.
 
-All generated HTML, CSV, Excel, and SQLite files can contain sensitive source data. Keep them private. Protect the selected output directory and retain reports only as long as needed. Do not enable browser/network tracing with live authentication.
+HTML, CSV, Excel, and SQLite exports can contain sensitive source data, including
+student names and institutions. Protect output folders and retain reports only
+as long as needed.
 
-New HTML reports include a Content Security Policy that authorizes embedded
-scripts by their SHA-256 hashes and blocks network connections, external scripts,
-embedded objects, base URL changes, and form submissions. Inline styles and
-data/blob images remain available for Plotly charts and printing. Regenerate old
-reports to apply this policy.
+HTML reports use a Content Security Policy with hashed embedded scripts and
+blocked network connections, external scripts, objects, base URL changes, and
+form submissions. Inline styles and data/blob images support charts and printing.
+Regenerate older reports to apply policy changes.
 
-The desktop **Send Error Logs** action opens a read-only technical diagnostic
-preview. **Copy Logs** copies that exact report for manual sharing; it does not
-upload or email anything. Events stay in application memory for the current
-session, with at most ten affected attempts and 256 events per attempt. Exported
-reports are limited to 64 KiB. Closing the application releases its diagnostics;
-text explicitly copied to the clipboard remains under the operating system's
-normal clipboard behavior.
+## Diagnostics
 
-Diagnostics accept only a fixed catalog of event codes and validated technical
-fields: application/code identity, OS/runtime/browser versions, timestamps,
-stage outcomes, approved error categories, fixed browser lifecycle events,
-allowlisted closure reasons and sign-in/cleanup phases, and numeric HTTP/system/process error
-codes. They exclude credentials, cookies, headers, tenant URLs, workflow/staff
-names, records and record counts, user/host names, paths, configuration contents,
-environment dumps, screenshots, raw exceptions, and tracebacks. Unknown fields
-are rejected rather than scrubbed with secret-pattern matching. Worker events
-are independently validated before sending and after receipt. Invalid worker
-diagnostic messages abort the worker exchange; only a fixed transport-failure
-event is recorded, and the rejected contents never enter a report.
+**Send Error Logs** opens a read-only preview; **Copy Logs** copies it for manual
+sharing. It does not upload or email anything. Diagnostics stay in session memory,
+limited to ten affected attempts, 256 events per attempt, and 64 KiB per report.
+Copied text remains in the operating system clipboard after the app closes.
 
-Do not add generic exception logging, request/response dumping, or browser/network
-tracing to this support feature. The code fingerprint hashes only an explicit
-list of application source files, excluding runtime settings and data. Its small
-build manifest is an executable asset, not a runtime log.
+Accept only catalogued events and validated technical fields: application/code
+identity, runtime/browser versions, timestamps, stage outcomes, approved error
+categories, lifecycle events, and numeric HTTP/system/process codes. Exclude
+credentials, cookies, headers, tenant URLs, workflow/staff names, records and
+counts, user/host names, paths, settings, environment dumps, screenshots, raw
+exceptions, and tracebacks. Reject unknown fields and validate worker diagnostics
+at both ends; invalid messages abort the exchange without retaining their content.
 
-Before publishing:
+Do not add generic exception logging, request/response dumps, or tracing.
+Limit code fingerprints to application source, excluding settings and data.
+
+## Before publishing
+
+Review the staged diff and run:
 
 ```bash
 python tools/check_publication.py --working-tree
@@ -46,4 +47,8 @@ git status --short
 git diff --cached --stat
 ```
 
-The local checker supplements, but does not replace, a maintained secret scanner and current dependency advisory checks. Its output never includes matched credential values.
+The checker scans staged, tracked, eligible untracked files, and reachable Git
+history, including commit messages and annotated tags. Use `--all-objects` to
+include unreachable objects. Matched credential values are never printed.
+The checker supplements a maintained secret scanner and current dependency
+advisory checks.

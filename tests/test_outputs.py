@@ -101,7 +101,7 @@ def test_saved_run_trends_use_latest_eastern_snapshot_per_day() -> None:
         pd.Timestamp("2026-07-19"),
         pd.Timestamp("2026-07-21"),
     ]
-    assert chart.layout.xaxis.tickformat == "%b %d, %Y"
+    assert chart.layout.xaxis.tickformat == "%b %-d"
 
 
 def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> None:

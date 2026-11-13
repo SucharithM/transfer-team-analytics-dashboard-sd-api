@@ -34,10 +34,11 @@ def generate_records(count, seed, as_of, scenario="mixed"):
     rng = random.Random(seed)
     rows = []
     local = dashboard_timestamp(as_of)
-    dates = [local.date() - pd.Timedelta(days=day) for day in range(210)]
+    dates = list(pd.date_range(f"{local.year - 2}-01-01", local.date(), freq="D").date)[::-1]
     weights = [
         (0.7 + 0.3 * math.sin(day / 16) + math.exp(-((day - 24) / 20) ** 2))
         * (0.12 if date.weekday() >= 5 else 1)
+        * (1 if day < 210 else 0.08)
         for day, date in enumerate(dates)
     ]
     for i in range(count):
@@ -143,8 +144,13 @@ def preview(*, records=5000, scenario="mixed", seed=42, as_of=None, output_dir=P
         normalized = normalize_records(rows, config, generated_at=as_of)
         definition = build_metric_definition(config, normalized, source="fixture")
         local_date = dashboard_timestamp(as_of).date()
-        for days in range(29, 0, -1):
-            date = local_date - pd.Timedelta(days=days)
+        recent_dates = pd.date_range(
+            local_date - pd.Timedelta(days=29), periods=29, freq="D"
+        )
+        older_dates = pd.date_range(
+            f"{local_date.year - 2}-01-01", recent_dates[0] - pd.Timedelta(days=1), freq="MS"
+        )
+        for date in older_dates.union(recent_dates).date:
             historical_at = pd.Timestamp(f"{date}T12:00:00", tz="America/New_York")
             historical_at = historical_at.tz_convert("UTC")
             frame = historical_population(normalized, historical_at, report_at=as_of, seed=seed)
