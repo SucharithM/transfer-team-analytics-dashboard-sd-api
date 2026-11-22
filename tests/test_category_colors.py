@@ -1,5 +1,7 @@
 import pandas as pd
 
+from workflow_dashboard import theme
+
 from workflow_dashboard.dashboard_html import (
     _bar_chart,
     _category_color,
@@ -27,22 +29,22 @@ def test_staff_category_charts_use_the_standard_roster_palette() -> None:
         "Staff Member E",
         "staff",
         category_order=roster,
-    ) == "#db3b5a"
+    ) == theme.value("category-5")
     assert _category_color(
         " Staff  Member E ",
         "staff",
         category_order=tuple(reversed(roster)),
-    ) == "#2563eb"
+    ) == theme.value("category-1")
     assert _category_color(
         "New Colleague",
         "staff",
         category_order=(*roster[:4], "New Colleague"),
-    ) == "#db3b5a"
+    ) == theme.value("category-5")
     assert _category_color(
         "Staff Member A",
         "staff",
         category_order=roster,
-    ) == "#2563eb"
+    ) == theme.value("category-1")
 
     donut = _donut_chart(
         table,
@@ -65,8 +67,8 @@ def test_staff_category_charts_use_the_standard_roster_palette() -> None:
         zip(donut.data[0].customdata, donut.data[0].marker.colors)
     )
     bar_colors = dict(zip(bar.data[0].y, bar.data[0].marker.color))
-    assert donut_colors["Staff Member E"] == "#db3b5a"
-    assert bar_colors["Staff Member E"] == "#db3b5a"
+    assert donut_colors["Staff Member E"] == theme.value("category-5")
+    assert bar_colors["Staff Member E"] == theme.value("category-5")
 
 
 def test_staff_heatmap_keeps_shared_blue_intensity_scale() -> None:
@@ -80,7 +82,7 @@ def test_staff_heatmap_keeps_shared_blue_intensity_scale() -> None:
 
     heatmap = _submitted_by_date_heatmap(table)
     colorscale = [color for _, color in heatmap.data[0].colorscale]
-    assert colorscale == ["#e8f0ff", "#2563eb"]
+    assert colorscale == [theme.value("primary-soft"), theme.value("primary")]
 
 
 def test_status_chart_is_a_largest_first_direct_labeled_bar() -> None:

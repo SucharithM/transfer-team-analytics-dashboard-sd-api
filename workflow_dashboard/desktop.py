@@ -12,6 +12,7 @@ from dataclasses import replace
 from enum import Enum
 from pathlib import Path
 
+from . import theme
 from .config import DashboardConfig, is_secure_api_url
 from .desktop_preferences import (
     initial_output_directory,
@@ -149,29 +150,29 @@ class DesktopApp:
         self.notice = tk.StringVar(value="")
 
         root.title("Workflow Transfer Dashboard")
-        root.geometry("680x480")
-        root.minsize(620, 460)
-        frame = ttk.Frame(root, padding=24)
+        root.geometry(theme.value("native-window-size"))
+        root.minsize(int(theme.number("native-min-width")), int(theme.number("native-min-height")))
+        frame = ttk.Frame(root, padding=theme.number("native-padding"))
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(0, weight=1)
         self.content_frame = frame
         self.wrapping_labels = []
 
         def label(text=None, **kwargs):
-            widget = ttk.Label(frame, text=text, wraplength=620, **kwargs)
+            widget = ttk.Label(frame, text=text, wraplength=theme.number("native-min-width"), **kwargs)
             self.wrapping_labels.append(widget)
             return widget
 
-        label("Transfer Credit Dashboard", font=("TkDefaultFont", 17, "bold")).grid(row=0, column=0, sticky="w")
+        label("Transfer Credit Dashboard", font=(theme.value("native-font-family"), int(theme.number("native-title-size")), "bold")).grid(row=0, column=0, sticky="w")
         label("Choose a folder, then sign in with Microsoft.\n"
               "Your dashboard, workbook, and CSV will be saved together.").grid(
-            row=1, column=0, sticky="w", pady=(8, 16))
+            row=1, column=0, sticky="w", pady=theme.integers("native-intro-gap"))
         label("Output folder").grid(row=2, column=0, sticky="w")
         self.path_view = tk.Text(
             frame, height=2, wrap="char", relief="flat", borderwidth=0,
-            font="TkDefaultFont", padx=6, pady=6, takefocus=True,
+            font=theme.value("native-font-family"), padx=theme.number("native-path-padding"), pady=theme.number("native-path-padding"), takefocus=True,
         )
-        self.path_view.grid(row=3, column=0, sticky="ew", pady=(4, 14))
+        self.path_view.grid(row=3, column=0, sticky="ew", pady=theme.integers("native-path-gap"))
         self.set_display_path(self.destination)
         self.path_view.bind("<Command-c>" if sys.platform == "darwin" else "<Control-c>", self.copy_path)
 
@@ -183,28 +184,28 @@ class DesktopApp:
             widget = ttk.Label(stages, text=text)
             widget.grid(row=0, column=column, sticky="w")
             self.stage_labels.append(widget)
-        label(textvariable=self.status).grid(row=5, column=0, sticky="w", pady=(10, 6))
+        label(textvariable=self.status).grid(row=5, column=0, sticky="w", pady=theme.integers("native-status-gap"))
         self.bar = ttk.Progressbar(frame, mode="indeterminate", value=0)
-        self.bar.grid(row=6, column=0, sticky="ew", pady=(4, 10))
+        self.bar.grid(row=6, column=0, sticky="ew", pady=theme.integers("native-progress-gap"))
         self.bar.grid_remove()
 
         buttons = ttk.Frame(frame)
-        buttons.grid(row=7, column=0, sticky="w", pady=(6, 8))
+        buttons.grid(row=7, column=0, sticky="w", pady=theme.integers("native-buttons-gap"))
         self.generate_button = ttk.Button(buttons, text="Generate Dashboard", command=self.generate)
-        self.generate_button.grid(row=0, column=0, padx=(0, 8))
+        self.generate_button.grid(row=0, column=0, padx=(0, theme.number("native-button-gap")))
         self.cancel_button = ttk.Button(buttons, text="Cancel", command=self.cancel_run)
         self.cancel_button.grid(row=0, column=1)
         self.cancel_button.grid_remove()
         results = ttk.Frame(frame)
-        results.grid(row=8, column=0, sticky="w", pady=(0, 4))
+        results.grid(row=8, column=0, sticky="w", pady=theme.integers("native-results-gap"))
         self.dashboard_button = ttk.Button(results, text="Open Dashboard", command=self.open_dashboard)
-        self.dashboard_button.grid(row=0, column=0, padx=(0, 8))
+        self.dashboard_button.grid(row=0, column=0, padx=(0, theme.number("native-button-gap")))
         self.folder_button = ttk.Button(results, text="Open Output Folder", command=self.open_folder)
         self.folder_button.grid(row=0, column=1)
         self.logs_button = ttk.Button(results, text="Send Error Logs", command=self.open_error_logs)
-        self.logs_button.grid(row=0, column=2, padx=(8, 0))
-        label(textvariable=self.notice).grid(row=9, column=0, sticky="w", pady=(4, 4))
-        label("Sign-in credentials are not saved.").grid(row=10, column=0, sticky="w", pady=(8, 0))
+        self.logs_button.grid(row=0, column=2, padx=(theme.number("native-button-gap"), 0))
+        label(textvariable=self.notice).grid(row=9, column=0, sticky="w", pady=theme.integers("native-notice-gap"))
+        label("Sign-in credentials are not saved.").grid(row=10, column=0, sticky="w", pady=theme.integers("native-footer-gap"))
         frame.bind("<Configure>", self.resize)
         root.bind("<Escape>", lambda event: self.cancel_run())
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -221,7 +222,7 @@ class DesktopApp:
 
     def resize(self, event):
         for label in self.wrapping_labels:
-            label.configure(wraplength=max(200, event.width - 48))
+            label.configure(wraplength=max(theme.number("native-wrap-min"), event.width - 2 * theme.number("native-padding")))
         self.fit_content()
 
     def fit_content(self):
@@ -232,7 +233,7 @@ class DesktopApp:
         self.fitting_content = True
         try:
             self.root.update_idletasks()
-            self.root.minsize(620, max(460, self.content_frame.winfo_reqheight()))
+            self.root.minsize(int(theme.number("native-min-width")), max(int(theme.number("native-min-height")), self.content_frame.winfo_reqheight()))
         finally:
             self.fitting_content = False
 
@@ -277,7 +278,7 @@ class DesktopApp:
             current = {
                 DesktopState.SIGNIN: 0, DesktopState.FETCHING: 1, DesktopState.GENERATING: 2,
             }.get(self.state)
-            widget.configure(font=("TkDefaultFont", 10, "bold" if index == current else "normal"))
+            widget.configure(font=(theme.value("native-font-family"), int(theme.number("native-stage-size")), "bold" if index == current else "normal"))
         self.dashboard_button.configure(state="normal" if self.last_result and not self.closing else "disabled")
         self.folder_button.configure(state="normal" if (self.last_result or self.destination) and not self.closing else "disabled")
         self.logs_button.configure(state="normal" if self.diagnostics.has_reports() and not self.active and not self.closing else "disabled")
@@ -557,11 +558,11 @@ def launch_desktop(*, settings_path=None, channel="msedge") -> int:
     except Exception:
         diagnostics.finish(0, 'failed')
         root.title('Workflow Transfer Dashboard — Settings')
-        frame = ttk.Frame(root, padding=24)
+        frame = ttk.Frame(root, padding=theme.number("native-padding"))
         frame.pack(fill='both', expand=True)
-        ttk.Label(frame, text='Could not load dashboard settings. Check the nonsecret settings.toml file.', wraplength=480).pack(pady=(0, 16))
+        ttk.Label(frame, text='Could not load dashboard settings. Check the nonsecret settings.toml file.', wraplength=theme.number("native-settings-wrap")).pack(pady=(0, theme.number("native-logs-padding")))
         ttk.Button(frame, text='Send Error Logs', command=lambda: open_preview(root, diagnostics)).pack()
-        ttk.Button(frame, text='Close', command=root.destroy).pack(pady=(8, 0))
+        ttk.Button(frame, text='Close', command=root.destroy).pack(pady=theme.integers("native-footer-gap"))
         root.mainloop()
         return 2
     app = DesktopApp(root, config, channel=channel, diagnostics=diagnostics)

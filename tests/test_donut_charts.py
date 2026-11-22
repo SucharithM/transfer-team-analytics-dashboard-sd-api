@@ -1,4 +1,6 @@
 import pandas as pd
+
+from workflow_dashboard import theme
 import pytest
 
 from workflow_dashboard.dashboard_html import _category_color, _donut_chart
@@ -21,7 +23,7 @@ def test_donut_chart_orders_and_displays_complete_category_counts() -> None:
 
     trace = figure.data[0]
     assert trace.type == "pie"
-    assert trace.hole == pytest.approx(0.58)
+    assert trace.hole == pytest.approx(theme.number("chart-donut-hole"))
     assert trace.sort is False
     assert list(trace.labels) == ["Gamma", "Alpha", "Beta"]
     assert list(trace.values) == [6, 2, 2]
@@ -30,16 +32,16 @@ def test_donut_chart_orders_and_displays_complete_category_counts() -> None:
         _category_color(label, "generic")
         for label in ["Gamma", "Alpha", "Beta"]
     ]
-    assert trace.marker.line.color == "#ffffff"
-    assert trace.marker.line.width == 2
+    assert trace.marker.line.color == theme.value("on-accent")
+    assert trace.marker.line.width == theme.number("chart-donut-border-width")
     assert trace.texttemplate == "%{value:,}<br>%{percent:.1%}"
     assert "Cases: %{value:,}" in trace.hovertemplate
     assert "Share: %{percent:.1%}" in trace.hovertemplate
     assert figure.layout.annotations[0].text == "<b>10</b>"
-    assert figure.layout.height == 380
+    assert figure.layout.height == theme.number("chart-height-donut")
     assert figure.layout.showlegend is False
     assert figure.layout.meta["category_values"] == ["6", "2", "2"]
-    assert figure.layout.uniformtext.minsize == 11
+    assert figure.layout.uniformtext.minsize == theme.number("chart-small-label-size")
     assert figure.layout.uniformtext.mode == "hide"
 
 
@@ -62,8 +64,8 @@ def test_donut_chart_keeps_plot_height_independent_of_category_count() -> None:
     assert list(figure.data[0].values) == [5, 4, 3, 2, 1]
     assert "<br>" in figure.data[0].labels[0]
     assert len(figure.data[0].labels) == len(table)
-    assert figure.layout.height == 380
-    assert figure.layout.margin.b == 10
+    assert figure.layout.height == theme.number("chart-height-donut")
+    assert figure.layout.margin.b == theme.margin("chart-margin-donut")["b"]
 
 
 def test_donut_chart_keeps_existing_empty_state() -> None:
@@ -76,7 +78,7 @@ def test_donut_chart_keeps_existing_empty_state() -> None:
 
     assert len(figure.data) == 0
     assert figure.layout.annotations[0].text == "No data available"
-    assert figure.layout.height == 240
+    assert figure.layout.height == theme.number("chart-height-empty")
 
 
 def test_category_list_preserves_tiny_zero_and_unavailable_values():

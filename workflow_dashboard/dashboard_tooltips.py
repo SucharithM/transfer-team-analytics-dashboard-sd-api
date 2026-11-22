@@ -1,24 +1,5 @@
 """Viewport-aware help shared by report cards and the print action."""
 
-TOOLTIP_STYLES = """
-    #dashboard-tooltip-layer { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
-    #dashboard-tooltip-layer .floating-tooltip {
-      position: fixed; inset: auto; min-width: 0; max-width: calc(100vw - 24px);
-      box-sizing: border-box; overflow: auto; overflow-wrap: anywhere;
-      overscroll-behavior: contain; white-space: normal; transform: none;
-      opacity: 0; visibility: hidden; pointer-events: none;
-      transition: opacity 120ms ease, visibility 120ms ease;
-    }
-    #dashboard-tooltip-layer .floating-tooltip.is-open {
-      opacity: 1; visibility: visible; pointer-events: auto;
-    }
-    .tooltips-ready .pdf-export-hint::after { display: none; }
-    @media (prefers-reduced-motion: reduce) {
-      #dashboard-tooltip-layer .floating-tooltip { transition: none; }
-    }
-    @media print { #dashboard-tooltip-layer { display: none !important; } }
-"""
-
 
 TOOLTIP_SCRIPT = """
   <script>

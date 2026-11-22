@@ -101,7 +101,16 @@ regenerate reports to apply application updates. See the
 **Exports contain workflow data, including student names and institutions in
 Case Observations.** Keep reports and history private; follow [Security](SECURITY.md).
 
-Use arrow keys to move between report tabs and Enter or Space to select one.
+Choose a report section in the sidebar, then use its horizontal tabs to switch
+between views. Dashboard Overview highlights open cases, backlog, completions,
+and observations in eight cards, with workflow and seven-day completion charts.
+The counted actions below the charts open matching aged-and-idle cases in Risk
+Overview or the full observations table. The sidebar stays at the left edge
+while scrolling on desktop. Its bottom shows the
+Print / PDF, a Process guide button, the developer credit, and the generation time.
+The guide includes the full report introduction and is available from every
+section; close it with Close or Escape.
+Use Up/Down in the sidebar, Left/Right in horizontal tabs, and Enter or Space to select.
 Hover, focus, or tap for help; Escape or an outside tap dismisses it.
 
 ### Print / PDF
@@ -114,6 +123,13 @@ omit the local file URL.
 Printing includes all sections, all case observations, and any open drilldown.
 Year-filtered charts use their selected periods. Saving or cancelling preserves
 the interactive report's selections. Normal generation does not create a PDF.
+
+### Styling
+
+Edit [`workflow_dashboard/styles.css`](workflow_dashboard/styles.css) for all
+dashboard CSS and shared colors, fonts, chart sizing, workbook styling, and native
+launcher measurements. Exports remain self-contained and
+work offline. See [styling guidance](docs/development.md#styling).
 
 ## Metric definitions
 

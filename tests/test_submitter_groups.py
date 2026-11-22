@@ -1,6 +1,8 @@
 """Staff inventory must reconcile while preserving meaningful submitter groups."""
 import pandas as pd
 
+from workflow_dashboard import theme
+
 from workflow_dashboard.analytics import (
     _submitted_by_date_activity,
     _team_member_counts,
@@ -37,13 +39,13 @@ def test_dated_staff_groups_include_all_eligible_dates_and_zero_fill_members():
 
 def test_submitter_group_colors_are_fixed():
     order = DashboardConfig().team_members
-    assert _category_color('Others', 'staff', category_order=order) == '#475569'
-    assert _category_color('Not recorded', 'staff', category_order=order) == '#737373'
+    assert _category_color('Others', 'staff', category_order=order) == theme.value("staff-other")
+    assert _category_color('Not recorded', 'staff', category_order=order) == theme.value("staff-missing")
     table = _team_member_counts(pd.DataFrame({'owner': ['External', None, order[0]]}), order)
     chart = _donut_chart(table, 'owner', 'count', 'Staff', color_dimension='staff', category_order=order)
     colors = dict(zip(chart.data[0].customdata, chart.data[0].marker.colors))
-    assert colors['Others'] == '#475569'
-    assert colors['Not recorded'] == '#737373'
+    assert colors['Others'] == theme.value("staff-other")
+    assert colors['Not recorded'] == theme.value("staff-missing")
     assert sum(chart.data[0].values) == 3
 
 

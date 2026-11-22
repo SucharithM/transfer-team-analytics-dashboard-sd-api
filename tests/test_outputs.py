@@ -212,7 +212,7 @@ def test_dashboard_uses_executive_title_and_updated_chart_layout(tmp_path) -> No
     assert (
         html_text.index('aria-label="Cases Completed by Month"')
         < html_text.index('aria-label="Daily Completed Cases"')
-        < html_text.index('aria-label="Cases Completed — Last 7 Days"')
+        < html_text.rindex('aria-label="Cases Completed — Last 7 Days"')
         < html_text.index('aria-label="Backlog Trend — Open Cases Over 7 Days Old"')
         < html_text.index('aria-label="Median Open-Case Age Trend"')
     )

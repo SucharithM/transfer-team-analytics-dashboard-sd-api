@@ -170,6 +170,7 @@ def test_runtime_metadata_has_only_approved_technical_fields(monkeypatch):
 
 @pytest.mark.parametrize("changed_file", [
     "desktop.py", "dashboard_navigation.py", "dashboard_print.py", "dashboard_tooltips.py",
+    "theme.py", "styles.css",
 ])
 def test_build_identity_excludes_settings_and_data_and_loads_frozen_manifest(
     tmp_path, monkeypatch, changed_file
