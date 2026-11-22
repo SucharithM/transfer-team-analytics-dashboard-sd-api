@@ -16,85 +16,18 @@ def tab_bar(group: str, label: str, tabs: tuple[tuple[str, str], ...]) -> str:
     )
 
 
-NAVIGATION_STYLES = """
-    .dashboard-tabs { --primary-tabs-height: 37px; margin-top: 12px; }
-    .tabs-ready .dashboard-tabs { overflow-anchor: none; }
-    .tab-panels { display: flow-root; overflow-anchor: none; }
-    .dashboard-tabbar { display: none; }
-    .tabs-ready .dashboard-tabbar {
-      display: flex; gap: 4px; overflow-x: auto; background: var(--surface);
-      border-bottom: 1px solid var(--border); padding: 2px 4px;
-      position: sticky; top: var(--primary-tabs-height); z-index: 12;
-      scrollbar-width: thin; scroll-margin-top: var(--primary-tabs-height);
-    }
-    .tabs-ready [data-tab-list="sections"] {
-      top: 0; z-index: 15; scroll-margin-top: 0;
-      box-shadow: 0 3px 10px rgba(34, 49, 73, 0.07);
-    }
-    .dashboard-tabbar a {
-      display: flex; align-items: flex-end; flex: 0 0 auto;
-      min-height: 34px; padding: 4px 12px; border-radius: 6px;
-      color: var(--muted); font-size: 13px; font-weight: 600;
-      text-decoration: none; white-space: nowrap;
-      transition: color 120ms ease, background-color 120ms ease;
-    }
-    .dashboard-tabbar a:hover { background: var(--surface-muted); color: var(--text); }
-    .dashboard-tabbar a[aria-selected="true"] {
-      color: var(--primary-dark); background: var(--primary-soft);
-      box-shadow: inset 0 -2px var(--primary);
-    }
-    .dashboard-tabbar a:focus-visible, [data-tab-panel]:focus-visible {
-      outline: 3px solid var(--primary); outline-offset: -3px;
-    }
-    [data-tab-panel] { scroll-margin-top: calc(var(--primary-tabs-height) + 12px); }
-    [data-tab-panel="operations"], [data-tab-panel="staff"] {
-      scroll-margin-top: calc(var(--primary-tabs-height) + 72px);
-    }
-    [data-tab-panel]:not(.dashboard-section) { margin-top: 8px; }
-    .tabs-ready [data-tab-panel][hidden] { display: none; }
-    .tabs-ready .table-container, .tabs-ready .action-matrix-controls,
-    .tabs-ready .action-matrix-drilldown {
-      scroll-margin-top: calc(var(--primary-tabs-height) + 72px);
-    }
-    .dashboard-tabs .dashboard-section { margin-top: 8px; }
-    .dashboard-tabs .chart-container { padding: 15px 16px 10px; margin-bottom: 12px; }
-    .dashboard-tabs .table-container { padding: 15px 16px 16px; }
-    .case-metrics-grid, .aging-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
-    .case-metrics-grid .chart-container, .aging-grid .chart-container { margin-bottom: 0; }
-    .aging-grid .chart-container-wide { overflow-x: auto; }
-    #problem-rows-table .table-scroll { max-height: 420px; overflow: auto; }
-    @media (pointer: coarse) {
-      .dashboard-tabbar a { min-height: 44px; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .dashboard-tabbar a { transition: none; }
-    }
-"""
-
-
 NAVIGATION_SCRIPT = """
   <script>
     (() => {
-      const guide = document.querySelector('.legend-card');
-      const guideToggle = guide.querySelector('.legend-toggle');
-      const guideContent = document.getElementById(guideToggle.getAttribute('aria-controls'));
-      const setGuideExpanded = expanded => {
-        guideToggle.setAttribute('aria-expanded', String(expanded));
-        guideToggle.querySelector('span').textContent = expanded ? 'Hide guide' : 'Show guide';
-        guideContent.classList.toggle('is-collapsed', !expanded);
-      };
-      setGuideExpanded(false);
-      guideToggle.hidden = false;
-      // Enable transitions only after the initial collapsed layout is established.
-      guideContent.getBoundingClientRect();
-      guide.classList.add('guide-ready');
-      guideToggle.addEventListener('click', () => {
+      const guide = document.getElementById('workflow-guide');
+      const guideButton = document.getElementById('show-workflow-guide');
+      guideButton.addEventListener('click', () => {
         document.dispatchEvent(new Event('dashboard-panel-change'));
-        setGuideExpanded(guideToggle.getAttribute('aria-expanded') !== 'true');
+        guide.showModal();
       });
-      const finishGuide = () => guide.getAnimations({ subtree: true }).forEach(animation => animation.finish());
-      document.addEventListener('dashboard-prepare-print', finishGuide);
-      window.addEventListener('beforeprint', finishGuide);
+      document.getElementById('close-workflow-guide').addEventListener('click', () => guide.close());
+      document.addEventListener('dashboard-prepare-print', () => guide.close());
+      window.addEventListener('beforeprint', () => guide.close());
       const shell = document.querySelector('.dashboard-tabs');
       const plots = Array.from(document.querySelectorAll('.chart-container .js-plotly-plot'));
       const reportLabels = new Map(Array.from(shell.querySelectorAll('[data-tab-panel]'),
@@ -108,6 +41,9 @@ NAVIGATION_SCRIPT = """
         let animations = [];
         let pending = Promise.resolve();
         let historyFrame;
+        const motion = getComputedStyle(shell);
+        const duration = name => Number(motion.getPropertyValue('--tab-' + name + '-duration'));
+        const easing = name => motion.getPropertyValue('--tab-' + name + '-easing').trim();
         const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
         const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
         const finish = () => {
@@ -147,13 +83,18 @@ NAVIGATION_SCRIPT = """
           }
           const start = performance.now();
           while (token === revision) {
-            const elapsed = Math.min(1, (performance.now() - start) / 220);
+            const elapsed = Math.min(1, (performance.now() - start) / Math.max(1, duration('scroll')));
             window.scrollTo({ top: from + (destination - from) * (1 - (1 - elapsed) ** 3), behavior: 'instant' });
             if (elapsed >= 1) break;
             await frame();
           }
         };
         const animateSelection = async (target, options = {}) => {
+          if (target.matches('[data-action-bucket]')) {
+            target.dispatchEvent(new Event('dashboard-select-action-group'));
+            target = document.getElementById(target.getAttribute('aria-controls')).querySelector('h3');
+            options = { ...options, scroll: true, focus: true };
+          }
           const sizes = new Map(Array.from(groups.values(), group => [group, group.host.getBoundingClientRect().height]));
           // Retain document space before cancelling a previous, partially finished switch.
           const reserve = Math.max(shell.getBoundingClientRect().height,
@@ -184,7 +125,7 @@ NAVIGATION_SCRIPT = """
           });
           visible.forEach(group => { group.host.style.height = (sizes.get(group) || targets.get(group)) + 'px'; });
           const group = groups.get(panel.dataset.tabPanel);
-          const barBottom = group.list.getBoundingClientRect().bottom;
+          const barBottom = group.list.dataset.tabList === 'sections' ? Number.parseFloat(getComputedStyle(shell).getPropertyValue('--masthead-height')) || 0 : group.list.getBoundingClientRect().bottom;
           const rect = target.getBoundingClientRect();
           // Normal switches never scroll. Only retrieve content above a sticky bar,
           // or deliberately navigate to a deep-link/drilldown target.
@@ -195,7 +136,7 @@ NAVIGATION_SCRIPT = """
             const scrolling = scrollSmoothly(top, token, animate);
             if (animate) {
               panel.style.opacity = '';
-              const fade = panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+              const fade = panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: duration('fade'), easing: easing('fade') });
               animations.push(fade);
             }
             await scrolling;
@@ -203,13 +144,13 @@ NAVIGATION_SCRIPT = """
           if (token !== revision) return;
           panel.style.opacity = '';
           if (animate) {
-            if (!animations.length) animations.push(panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' }));
+            if (!animations.length) animations.push(panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: duration('fade'), easing: easing('fade') }));
             visible.forEach(item => {
               const from = sizes.get(item) || targets.get(item);
               item.host.style.height = targets.get(item) + 'px';
               if (Math.abs(from - targets.get(item)) > 1) animations.push(item.host.animate(
                 [{ height: from + 'px' }, { height: targets.get(item) + 'px' }],
-                { duration: 220, easing: 'cubic-bezier(0.2, 0, 0, 1)' }
+                { duration: duration('resize'), easing: easing('resize') }
               ));
             });
             await Promise.all(animations.map(animation => animation.finished.catch(() => {})));
@@ -256,10 +197,12 @@ NAVIGATION_SCRIPT = """
             const host = document.createElement('div');
             host.className = 'tab-panels';
             host.dataset.panelHost = key;
-            list.after(host);
+            (key === 'sections' ? list.closest('.dashboard-sidebar') : list).after(host);
             panels.forEach(panel => host.append(panel));
+            if (key === 'sections') host.append(shell.querySelector('.page-footer'));
             groups.set(key, { list, links, panels, host });
             list.setAttribute('role', 'tablist');
+            if (key === 'sections') list.setAttribute('aria-orientation', 'vertical');
             links.forEach((link, index) => {
               link.setAttribute('role', 'tab');
               link.setAttribute('aria-controls', panels[index].id);
@@ -287,8 +230,9 @@ NAVIGATION_SCRIPT = """
               const index = group.links.indexOf(document.activeElement);
               if (index < 0) return;
               let next;
-              if (event.key === 'ArrowRight') next = (index + 1) % group.links.length;
-              else if (event.key === 'ArrowLeft') next = (index - 1 + group.links.length) % group.links.length;
+              const vertical = group.list.getAttribute('aria-orientation') === 'vertical';
+              if (event.key === (vertical ? 'ArrowDown' : 'ArrowRight')) next = (index + 1) % group.links.length;
+              else if (event.key === (vertical ? 'ArrowUp' : 'ArrowLeft')) next = (index - 1 + group.links.length) % group.links.length;
               else if (event.key === 'Home') next = 0;
               else if (event.key === 'End') next = group.links.length - 1;
               else if (event.key === ' ' || event.key === 'Enter') {
@@ -325,11 +269,8 @@ NAVIGATION_SCRIPT = """
           };
           window.addEventListener('popstate', navigateHistory);
           window.addEventListener('hashchange', navigateHistory);
-          const primary = groups.get('sections').list;
-          const measure = () => shell.style.setProperty('--primary-tabs-height', primary.offsetHeight + 'px');
           document.body.classList.add('tabs-ready');
-          measure();
-          new ResizeObserver(() => { measure(); resizeVisible(); }).observe(primary);
+          new ResizeObserver(resizeVisible).observe(shell);
           // History alignment is handled here, without a competing browser jump.
           history.scrollRestoration = 'manual';
           // User scrolling takes precedence over an automatic alignment in progress.
@@ -340,7 +281,7 @@ NAVIGATION_SCRIPT = """
                 && !event.target.closest('[data-tab-list]')) finish();
           });
           window.addEventListener('resize', () => { finish(); resizeVisible(); });
-          guideToggle.addEventListener('click', finish);
+          guideButton.addEventListener('click', finish);
           matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', finish);
           document.addEventListener('dashboard-prepare-print', event => {
             finish();

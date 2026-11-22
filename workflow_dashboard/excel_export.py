@@ -13,15 +13,23 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from . import dashboard_content as content
+from . import theme
 from .analytics import AnalyticsBundle
 from .number_format import round_one_decimal
 from .time_utils import dashboard_timestamp
 
 
-BLUE = "2563EB"
-DARK = "172033"
-MUTED = "5F6F85"
-BORDER = "D9E2EF"
+BLUE = theme.excel_color("workbook-primary")
+DARK = theme.excel_color("workbook-text")
+MUTED = theme.excel_color("workbook-muted")
+BORDER = theme.excel_color("workbook-border")
+FONT_FAMILY = theme.value("workbook-font-family")
+FONT_SIZE = theme.number("workbook-font-size")
+TITLE_SIZE = theme.number("workbook-title-size")
+SUMMARY_SIZE = theme.number("workbook-summary-font-size")
+ON_ACCENT = theme.excel_color("on-accent")
+SURFACE = theme.excel_color("surface")
+TABLE_STYLE = theme.value("workbook-table-style")
 EXCEL_COLUMN_NAMES = {"record_id": "package_id"}
 
 
@@ -55,7 +63,7 @@ def _write_dataframe(ws, df: pd.DataFrame, *, start_row: int = 1, start_col: int
     for col_index, column in enumerate(columns, start=start_col):
         cell = ws.cell(row=start_row, column=col_index, value=column)
         cell.fill = PatternFill("solid", fgColor=BLUE)
-        cell.font = Font(color="FFFFFF", bold=True)
+        cell.font = Font(name=FONT_FAMILY, size=FONT_SIZE, color=ON_ACCENT, bold=True)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     for row_index, (_, row) in enumerate(df.iterrows(), start=start_row + 1):
@@ -67,6 +75,7 @@ def _write_dataframe(ws, df: pd.DataFrame, *, start_row: int = 1, start_col: int
                     row[column], one_decimal=_one_decimal_column(column)
                 ),
             )
+            cell.font = Font(name=FONT_FAMILY, size=FONT_SIZE, color=DARK)
             cell.alignment = Alignment(vertical="top", wrap_text=column in {"item_label", "source_payload", "exception_reasons"})
             if column.endswith("_at"):
                 cell.number_format = "yyyy-mm-dd hh:mm"
@@ -78,7 +87,7 @@ def _write_dataframe(ws, df: pd.DataFrame, *, start_row: int = 1, start_col: int
     if table_name and columns:
         ref = f"{get_column_letter(start_col)}{start_row}:{get_column_letter(max_col)}{max_row}"
         table = Table(displayName=table_name, ref=ref)
-        table.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False)
+        table.tableStyleInfo = TableStyleInfo(name=TABLE_STYLE, showRowStripes=True, showColumnStripes=False)
         ws.add_table(table)
 
 
@@ -89,28 +98,28 @@ def _style_sheet(ws) -> None:
     for row in ws.iter_rows():
         for cell in row:
             cell.border = Border(bottom=thin)
-            cell.font = Font(name="Segoe UI", size=10, color=DARK, bold=cell.font.bold)
-            if cell.row == 1:
-                cell.font = Font(name="Segoe UI", size=10, color="FFFFFF", bold=True)
     for column_cells in ws.columns:
         letter = get_column_letter(column_cells[0].column)
         max_len = max((len(str(cell.value)) if cell.value is not None else 0) for cell in column_cells)
-        width = min(max(max_len + 2, 12), 48)
+        width = min(
+            max(max_len + theme.number("workbook-column-padding"), theme.number("workbook-column-min")),
+            theme.number("workbook-column-max"),
+        )
         if column_cells[0].value == "source_payload":
-            width = 64
+            width = theme.number("workbook-payload-width")
         ws.column_dimensions[letter].width = width
 
 
 def _summary_sheet(ws, analytics: AnalyticsBundle, history: pd.DataFrame) -> None:
     ws.sheet_view.showGridLines = False
     ws["A1"] = _excel_value(analytics.dashboard_title)
-    ws["A1"].font = Font(name="Segoe UI", size=18, bold=True, color=DARK)
+    ws["A1"].font = Font(name=FONT_FAMILY, size=TITLE_SIZE, bold=True, color=DARK)
     generated_at = dashboard_timestamp(analytics.generated_at)
     ws["A2"] = (
         f"{content.PAGE.generated_prefix} "
         f"{generated_at.strftime('%Y-%m-%d %H:%M %Z')}"
     )
-    ws["A2"].font = Font(name="Segoe UI", size=10, color=MUTED)
+    ws["A2"].font = Font(name=FONT_FAMILY, size=FONT_SIZE, color=MUTED)
     ws.merge_cells("A1:D1")
     ws.merge_cells("A2:D2")
 
@@ -120,12 +129,12 @@ def _summary_sheet(ws, analytics: AnalyticsBundle, history: pd.DataFrame) -> Non
         ws.cell(row=row, column=1, value=kpi.label)
         ws.cell(row=row, column=2, value=kpi.value)
         ws.cell(row=row, column=3, value=kpi.help_text)
-        ws.cell(row=row, column=1).font = Font(name="Segoe UI", bold=True, color=DARK)
-        ws.cell(row=row, column=2).font = Font(name="Segoe UI", bold=True, color=BLUE)
-        ws.cell(row=row, column=3).font = Font(name="Segoe UI", color=MUTED)
+        ws.cell(row=row, column=1).font = Font(name=FONT_FAMILY, size=SUMMARY_SIZE, bold=True, color=DARK)
+        ws.cell(row=row, column=2).font = Font(name=FONT_FAMILY, size=SUMMARY_SIZE, bold=True, color=BLUE)
+        ws.cell(row=row, column=3).font = Font(name=FONT_FAMILY, size=SUMMARY_SIZE, color=MUTED)
 
     ws["A12"] = content.WORKBOOK.recent_trends_heading
-    ws["A12"].font = Font(name="Segoe UI", bold=True, color=DARK)
+    ws["A12"].font = Font(name=FONT_FAMILY, size=SUMMARY_SIZE, bold=True, color=DARK)
     trend = history.tail(12).copy()
     if not trend.empty:
         summary_cols = [
@@ -141,15 +150,15 @@ def _summary_sheet(ws, analytics: AnalyticsBundle, history: pd.DataFrame) -> Non
         _write_dataframe(ws, trend[[column for column in summary_cols if column in trend.columns]], start_row=13, table_name="SummaryTrendTable")
     else:
         ws["A13"] = content.WORKBOOK.empty_trends_message
-        ws["A13"].font = Font(name="Segoe UI", color=MUTED)
+        ws["A13"].font = Font(name=FONT_FAMILY, size=SUMMARY_SIZE, color=MUTED)
 
-    widths = {"A": 26, "B": 18, "C": 90, "D": 18, "E": 18}
+    widths = dict(zip("ABCDE", theme.integers("workbook-summary-widths"), strict=True))
     for letter, width in widths.items():
         ws.column_dimensions[letter].width = width
     thin = Side(style="thin", color=BORDER)
     for row in ws.iter_rows(min_row=4, max_row=10, min_col=1, max_col=3):
         for cell in row:
-            cell.fill = PatternFill("solid", fgColor="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=SURFACE)
             cell.border = Border(bottom=thin)
             cell.alignment = Alignment(vertical="top", wrap_text=True)
 

@@ -44,7 +44,7 @@ def test_nondefault_threshold_copy_matches_backlog_boundary(tmp_path):
     assert '{backlog_age_days' not in markup
     assert '{old_age_days' not in markup
     assert '{stale_idle_days' not in markup
-    assert markup.count(f'class="section-copy completion-date-note">{COMPLETION_DATE_NOTE}') == 3
+    assert markup.count(f'class="section-copy completion-date-note">{COMPLETION_DATE_NOTE}') == 4
 
 
 def test_presentation_context_does_not_change_metrics_or_definition(tmp_path):

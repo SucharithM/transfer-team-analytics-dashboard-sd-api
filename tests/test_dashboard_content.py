@@ -206,8 +206,64 @@ def test_observation_chips_preserve_labels_and_escape_html():
     assert '<Unknown' not in markup and '<Workflow' not in markup
     assert markup.count('<tr><td></td><td></td></tr>') == 4
     assert markup.count('<tr>') == len(statuses) + 1
-    assert '--table-width: 480px' in markup
-    assert '<col data-field="step_name" style="--column-width: 320px;' in markup
-    assert '<col data-field="status" style="--column-width: 160px;' in markup
+    assert 'style=' not in markup
+    assert '<col data-field="step_name">' in markup
+    assert '<col data-field="status">' in markup
     assert markup.index('data-field="step_name"') < markup.index('data-field="status"')
     assert 'empty-table' in _table_html(pd.DataFrame())
+
+
+def test_overview_reuses_metrics_and_seven_complete_days(monkeypatch):
+    import pandas as pd
+    from workflow_dashboard import dashboard_html
+    from .test_analytics_cohorts import GENERATED_AT, sample_cases
+
+    analytics = build_analytics(sample_cases(), config=DashboardConfig(backlog_age_days=9), generated_at=GENERATED_AT)
+    figures = {}
+
+    def capture(fig, **kwargs):
+        figures[kwargs['div_id']] = fig
+        return ''
+
+    monkeypatch.setattr(dashboard_html, 'to_html', capture)
+    history = pd.DataFrame({
+        'generated_at': pd.date_range(end=GENERATED_AT, periods=40, freq='D'),
+        'backlog_count': range(40),
+        'median_age_days': [2] * 40,
+    })
+    dashboard_html._plot_divs(analytics, history)
+    assert len(figures) == 15
+    assert 'plot-overview-backlog' not in figures
+    assert 'plot-backlog-trend' in figures
+    weekly = figures['plot-overview-completions'].data[0]
+    assert len(weekly.x) == 7
+    assert pd.Timestamp(weekly.x[-1]).date() < GENERATED_AT.tz_convert('America/New_York').date()
+    markup = _kpi_html(analytics)
+    assert 'older than 9.0 days' in markup
+    assert f'<strong>{analytics.snapshot_metrics["backlog_count"]:,}</strong>' in markup
+    assert 'kpi-help-backlog' in markup
+    assert len(analytics.kpis) == 7
+
+
+@pytest.mark.parametrize('backlog,idle,expected', [(7, 3, 2), (9, 4, 1), (7, 100, 0)])
+def test_overview_actions_count_eligible_cases_and_use_configured_threshold(backlog, idle, expected):
+    import re
+    from workflow_dashboard.dashboard_html import _overview_actions_html
+    from .test_age_idle_action_matrix import _case, _analytics
+
+    cases = [
+        _case('recent-backlog', age_days=8, idle_days=3),
+        _case('older-backlog', age_days=10, idle_days=4),
+        _case('active', age_days=8, idle_days=2),
+        _case('missing-age', age_days=None, idle_days=4),
+        _case('missing-idle', age_days=10, idle_days=None),
+        _case('future', age_days=-1, idle_days=3),
+        _case('invalid-idle', age_days=10, idle_days=-1),
+    ]
+    analytics = _analytics(cases, DashboardConfig(backlog_age_days=backlog, stale_idle_days=idle))
+    markup = _overview_actions_html(analytics)
+    assert re.findall(r'class="action-count">([^<]+)', markup) == [str(expected), str(len(analytics.exceptions))]
+    assert f'activity for {idle}+ days' in markup
+    assert ('href="#action-group-backlog_stale"' in markup) == bool(expected)
+    assert ('aria-disabled="true"' in markup) == (expected == 0)
+    assert 'href="#problem-rows-table"' in markup

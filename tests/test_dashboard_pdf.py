@@ -238,14 +238,15 @@ def test_header_layout_and_tooltip(page, tmp_path, width):
       const brand = header.querySelector('.header-top').getBoundingClientRect();
       return title.top >= brand.bottom && title.width >= header.clientWidth - 60;
     }""")
-    for selector in (".header-top", "h1", ".header-utility-row", "#save-pdf"):
+    for selector in (".header-top", "h1", ".header-utility-row"):
         bounds = page.locator(f".dashboard-header {selector}").bounding_box()
         assert bounds["x"] >= 0
         assert bounds["x"] + bounds["width"] <= width
+    expect(page.locator('.dashboard-sidebar #save-pdf')).to_be_visible()
     assert page.locator(".dashboard-header").evaluate(
         "header => header.scrollWidth <= header.clientWidth"
     )
-    assert page.locator(".dashboard-header > p").all_text_contents() == list(
+    assert page.locator(".report-about p").all_text_contents() == list(
         PAGE.intro_paragraphs
     )
     button.hover()
@@ -342,13 +343,19 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
         assert selected
     _prepare(page)
     page.emulate_media(media="print")
+    assert page.locator('#overview-panel > .dashboard-section').evaluate(
+        'e => getComputedStyle(e).breakBefore') == 'auto'
     # Exercise landscape's actual printable width, including formerly scrolling tables.
     page.set_viewport_size({"width": 980, "height": 740})
+    assert page.locator('.kpi-grid').evaluate(
+        'e => getComputedStyle(e).gridTemplateColumns.split(" ").length') == 4
     assert page.locator("#save-pdf").is_hidden()
-    expect(page.locator(".legend-toggle")).to_be_hidden()
+    expect(page.locator("#close-workflow-guide")).to_be_hidden()
     expect(page.locator(".legend-item:visible")).to_have_count(6)
     assert page.locator(".js-plotly-plot").first.is_hidden()
-    assert page.locator(".pdf-chart").first.is_visible()
+    assert page.locator("#operations-panel .pdf-chart").first.is_visible()
+    expect(page.locator(".overview-charts")).to_be_hidden()
+    expect(page.locator(".print-credit")).to_be_visible()
     assert page.evaluate(
         """() => Array.from(document.querySelectorAll('.data-table')).every(
         t => t.scrollWidth <= t.clientWidth + 1)"""
@@ -373,8 +380,7 @@ def test_offline_pdf_layout_and_restore(page, tmp_path, scenario):
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     page.emulate_media(media="screen")
     assert page.locator("#save-pdf").is_enabled()
-    expect(page.locator(".legend-toggle")).to_have_attribute("aria-expanded", "false")
-    expect(page.locator("#workflow-legend-content")).to_be_hidden()
+    expect(page.locator("#workflow-guide")).to_be_hidden()
     expect(page.locator("#save-pdf")).to_have_text(PAGE.save_pdf)
     expect(page.locator("#pdf-export-status")).to_be_empty()
     expect(page.locator(".pdf-spinner")).to_be_hidden()
@@ -417,7 +423,7 @@ def test_preparation_failure_and_duplicate_clicks(page, tmp_path):
       button.dispatchEvent(new Event('click'));
     }""")
     page.wait_for_function("() => window.printCalls === 1")
-    assert page.locator(".pdf-chart").count() == 13
+    assert page.locator(".pdf-chart").count() == 15
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     assert page.locator("#save-pdf").is_enabled()
     expect(page.locator("#pdf-export-status")).to_be_empty()

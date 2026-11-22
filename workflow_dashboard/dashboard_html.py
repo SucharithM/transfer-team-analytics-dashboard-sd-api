@@ -16,60 +16,46 @@ import plotly.graph_objects as go
 from plotly.io import to_html
 
 from . import dashboard_content as content
-from .dashboard_navigation import NAVIGATION_SCRIPT, NAVIGATION_STYLES, tab_bar
-from .dashboard_tooltips import TOOLTIP_SCRIPT, TOOLTIP_STYLES
-from .dashboard_print import PRINT_STYLES, export_script
+from .dashboard_navigation import NAVIGATION_SCRIPT, tab_bar
+from .dashboard_tooltips import TOOLTIP_SCRIPT
+from .dashboard_print import export_script
 from .analytics import (
     AGING_BAND_LABELS,
     AnalyticsBundle,
 )
 from .number_format import format_one_decimal
+from . import theme
 from .time_utils import dashboard_time_series, dashboard_timestamp
 
-PRIMARY = "#2563eb"
-PRIMARY_DARK = "#1d4ed8"
-TEXT = "#172033"
-MUTED = "#5f6f85"
-BORDER = "#dce4ee"
-BG = "#eef2f7"
-SURFACE_MUTED = "#f8fafc"
-FONT_FAMILY = "Segoe UI, Inter, system-ui, -apple-system, sans-serif"
-COLORWAY = ["#2563eb", "#0f9f8f", "#7c3aed", "#e8792e", "#db3b5a", "#0891b2", "#64748b"]
-CATEGORY_COLORWAY = (
-    "#2563eb",
-    "#0f9f8f",
-    "#7c3aed",
-    "#e8792e",
-    "#db3b5a",
-    "#0891b2",
-    "#64748b",
-    "#ca8a04",
-    "#be185d",
-    "#4f46e5",
-)
+PRIMARY = theme.value("primary")
+PRIMARY_DARK = theme.value("primary-dark")
+TEXT = theme.value("text")
+MUTED = theme.value("muted")
+SURFACE_MUTED = theme.value("surface-muted")
+FONT_FAMILY = theme.value("font-family")
+CATEGORY_COLORWAY = tuple(theme.value(f"category-{index}") for index in range(1, 11))
+COLORWAY = list(CATEGORY_COLORWAY[:7])
 STATUS_COLORS = {
-    "completed": "#2f855a",
-    "needs review": "#e8792e",
-    "in progress": "#2563eb",
-    "no status": "#64748b",
+    "completed": theme.value("status-completed"),
+    "needs review": theme.value("status-review"),
+    "in progress": theme.value("status-progress"),
+    "no status": theme.value("status-missing"),
 }
 STAFF_COLORS = {
-    content.OTHER_SUBMITTERS.casefold(): "#475569",
-    content.MISSING_SUBMITTER.casefold(): "#737373",
+    content.OTHER_SUBMITTERS.casefold(): theme.value("staff-other"),
+    content.MISSING_SUBMITTER.casefold(): theme.value("staff-missing"),
 }
-AGING_RISK_COLORS = (
-    "#2f855a",
-    "#65a30d",
-    "#c89b19",
-    "#e8792e",
-    "#dc5a45",
-    "#b4233c",
-)
+AGING_RISK_COLORS = tuple(theme.value(f"risk-{index}") for index in range(1, 7))
 ACTION_BUCKET_COLORS = {
-    "young_active": "rgba(47, 133, 90, 0.07)",
-    "young_stale": "rgba(200, 155, 25, 0.08)",
-    "backlog_active": "rgba(232, 121, 46, 0.08)",
-    "backlog_stale": "rgba(180, 35, 60, 0.08)",
+    bucket: theme.value(f"bucket-{bucket.replace('_', '-')}")
+    for bucket in ("young_active", "young_stale", "backlog_active", "backlog_stale")
+}
+SWATCH_TOKENS = {
+    theme.value(token): token for token in (
+        *(f"category-{index}" for index in range(1, 11)),
+        "status-completed", "status-review", "status-progress", "status-missing",
+        "status-other", "staff-other", "staff-missing",
+    )
 }
 
 
@@ -95,7 +81,7 @@ def _category_color(
     key = _category_key(value)
     if dimension == "status":
         if key.startswith("other (") and key.endswith(" statuses)"):
-            return "#7c3aed"
+            return theme.value("status-other")
         return STATUS_COLORS.get(key, _stable_fallback_color(value))
     if dimension == "workflow_step":
         step_colors = {
@@ -149,7 +135,7 @@ def _empty_figure(title: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
         title=dict(text=""),
-        font=dict(family=FONT_FAMILY),
+        font=dict(family=FONT_FAMILY, size=theme.number("chart-font-size"), color=TEXT),
         annotations=[
             dict(
                 text=content.COMMON.empty_figure,
@@ -163,29 +149,29 @@ def _empty_figure(title: str) -> go.Figure:
         ],
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
-        height=240,
-        margin=dict(l=32, r=20, t=15, b=26),
-        paper_bgcolor="rgba(0,0,0,0)",
+        height=theme.number("chart-height-empty"),
+        margin=theme.margin("chart-margin-empty"),
+        paper_bgcolor=theme.value("chart-paper"),
         plot_bgcolor=SURFACE_MUTED,
     )
     return fig
 
 
-def _base_layout(fig: go.Figure, title: str, *, height: int = 340) -> go.Figure:
+def _base_layout(fig: go.Figure, title: str, *, height: float = theme.number("chart-height-base")) -> go.Figure:
     fig.update_layout(
         title=dict(text=""),
         font=dict(
             family=FONT_FAMILY,
             color=TEXT,
-            size=13,
+            size=theme.number("chart-font-size"),
         ),
-        paper_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor=theme.value("chart-paper"),
         plot_bgcolor=SURFACE_MUTED,
-        margin=dict(l=150, r=42, t=15, b=44),
-        height=math.ceil(height * 0.75),
+        margin=theme.margin("chart-margin-base"),
+        height=math.ceil(height * theme.number("chart-height-scale")),
         hoverlabel=dict(
             bgcolor=TEXT, bordercolor=TEXT,
-            font=dict(family=FONT_FAMILY, color="#ffffff", size=12),
+            font=dict(family=FONT_FAMILY, color=theme.value("on-accent"), size=theme.number("chart-label-size")),
         ),
         legend=dict(
             orientation="h",
@@ -193,24 +179,24 @@ def _base_layout(fig: go.Figure, title: str, *, height: int = 340) -> go.Figure:
             y=-0.2,
             xanchor="left",
             x=0,
-            font=dict(size=12, color=MUTED),
+            font=dict(size=theme.number("chart-label-size"), color=MUTED),
         ),
         colorway=COLORWAY,
     )
     fig.update_xaxes(
-        gridcolor="#dbe4ee",
-        linecolor="#dbe4ee",
-        tickcolor="#dbe4ee",
+        gridcolor=theme.value("chart-grid"),
+        linecolor=theme.value("chart-grid"),
+        tickcolor=theme.value("chart-grid"),
         zeroline=False,
-        title_font=dict(size=12),
+        title_font=dict(size=theme.number("chart-label-size")),
         tickfont=dict(color=MUTED),
     )
     fig.update_yaxes(
-        gridcolor="#dbe4ee",
-        linecolor="#dbe4ee",
-        tickcolor="#dbe4ee",
+        gridcolor=theme.value("chart-grid"),
+        linecolor=theme.value("chart-grid"),
+        tickcolor=theme.value("chart-grid"),
         zeroline=False,
-        title_font=dict(size=12),
+        title_font=dict(size=theme.number("chart-label-size")),
         tickfont=dict(color=MUTED),
     )
     return fig
@@ -272,7 +258,9 @@ def _bar_chart(
             hovertemplate=hovertemplate,
         )
     )
-    height = max(340, 100 + 28 * len(ordered)) if dynamic_height else 340
+    height = theme.number("chart-height-base")
+    if dynamic_height:
+        height = max(height, theme.number("chart-bar-height-base") + theme.number("chart-bar-row-height") * len(ordered))
     _base_layout(fig, title, height=height)
     fig.update_xaxes(title=x_title, rangemode="tozero", automargin=True)
     fig.update_yaxes(
@@ -326,8 +314,7 @@ def _donut_chart(
     if show_percent:
         hovertemplate += "<br>" + content.CHART_LABELS.share + ": %{percent:.1%}"
     hovertemplate += "<extra></extra>"
-    height = 380
-    bottom_margin = 10
+    height = theme.number("chart-height-donut")
     colors = _category_colors(
         raw_labels,
         color_dimension,
@@ -347,23 +334,23 @@ def _donut_chart(
                 else None
             ),
             customdata=raw_labels,
-            hole=0.58,
+            hole=theme.number("chart-donut-hole"),
             sort=False,
             direction="clockwise",
             marker=dict(
                 colors=colors,
-                line=dict(color="#ffffff", width=2),
+                line=dict(color=theme.value("on-accent"), width=theme.number("chart-donut-border-width")),
             ),
             textposition="inside",
             texttemplate=texttemplate,
-            textfont=dict(color="#ffffff", size=12),
+            textfont=dict(color=theme.value("on-accent"), size=theme.number("chart-label-size")),
             insidetextorientation="horizontal",
             hovertemplate=hovertemplate,
         )
     )
     _base_layout(fig, title, height=height)
     fig.update_layout(
-        margin=dict(l=24, r=24, t=15, b=bottom_margin),
+        margin=theme.margin("chart-margin-donut"),
         height=height,
         showlegend=False,
         meta={
@@ -381,24 +368,26 @@ def _donut_chart(
             ],
             "show_percent": show_percent,
         },
-        uniformtext=dict(minsize=11, mode="hide"),
+        uniformtext=dict(minsize=theme.number("chart-small-label-size"), mode="hide"),
         annotations=[
             dict(
-                text=f"<b>{displayed_center}</b>"
-                + (
-                    "<br><span style='font-size:13px'>Overall median</span>"
-                    if one_decimal
-                    else ""
-                ),
+                text=f"<b>{displayed_center}</b>",
                 x=0.5,
                 y=0.5,
                 xref="paper",
                 yref="paper",
                 showarrow=False,
-                font=dict(color=TEXT, size=22),
+                font=dict(color=TEXT, size=theme.number("chart-center-size")),
+                yshift=theme.number("chart-center-value-offset") if one_decimal else 0,
             )
         ],
     )
+    if one_decimal:
+        fig.add_annotation(
+            text="Overall median", x=0.5, y=0.5, xref="paper", yref="paper",
+            showarrow=False, yshift=theme.number("chart-center-caption-offset"),
+            font=dict(color=TEXT, size=theme.number("chart-font-size")),
+        )
     return fig
 
 
@@ -493,14 +482,14 @@ def _line_chart(
             x=local_run_times.dt.tz_localize(None).dt.normalize(),
             y=history[metric],
             mode="lines+markers",
-            line=dict(color=PRIMARY, width=3),
-            marker=dict(size=7),
+            line=dict(color=PRIMARY, width=theme.number("chart-line-width")),
+            marker=dict(size=theme.number("chart-line-point-size")),
             customdata=customdata,
             hovertemplate=hovertemplate,
         )
     )
-    _base_layout(fig, title, height=310)
-    fig.update_layout(margin=dict(l=72, r=36, t=15, b=44))
+    _base_layout(fig, title, height=theme.number("chart-height-line"))
+    fig.update_layout(margin=theme.margin("chart-margin-line"))
     fig.update_xaxes(
         title=content.CHART_LABELS.date,
         tickformat="%b %-d\n%Y" if local_run_times.dt.year.nunique() > 1 else "%b %-d",
@@ -580,8 +569,8 @@ def _daily_closures_chart(table: pd.DataFrame) -> go.Figure:
             y=rolling["rolling_7_day_avg"],
             name=content.CHART_LABELS.seven_day_average,
             mode="lines+markers",
-            line=dict(color=COLORWAY[1], width=3),
-            marker=dict(size=6),
+            line=dict(color=COLORWAY[1], width=theme.number("chart-line-width")),
+            marker=dict(size=theme.number("chart-completion-point-size")),
             customdata=[
                 format_one_decimal(value) for value in rolling["rolling_7_day_avg"]
             ],
@@ -593,10 +582,10 @@ def _daily_closures_chart(table: pd.DataFrame) -> go.Figure:
             ),
         )
     )
-    _base_layout(fig, title, height=380)
+    _base_layout(fig, title, height=theme.number("chart-height-heatmap"))
     fig.update_layout(
-        margin=dict(l=72, r=36, t=53, b=57),
-        bargap=0.15,
+        margin=theme.margin("chart-margin-completion"),
+        bargap=theme.number("chart-bar-gap"),
         legend=dict(y=1.08, yanchor="bottom"),
     )
     fig.update_xaxes(title=content.CHART_LABELS.close_date)
@@ -646,8 +635,8 @@ def _recent_closures_chart(
             y=recent["closed_count"],
             name=content.CHART_LABELS.cases_closed,
             mode="lines+markers",
-            line=dict(color=PRIMARY, width=3),
-            marker=dict(size=7),
+            line=dict(color=PRIMARY, width=theme.number("chart-line-width")),
+            marker=dict(size=theme.number("chart-line-point-size")),
             hovertemplate=(
                 content.CHART_LABELS.date
                 + ": %{x|%Y-%m-%d}<br>"
@@ -656,9 +645,9 @@ def _recent_closures_chart(
             ),
         )
     )
-    _base_layout(fig, chart_copy.title, height=330)
+    _base_layout(fig, chart_copy.title, height=theme.number("chart-height-daily"))
     fig.update_layout(
-        margin=dict(l=72, r=36, t=15, b=44),
+        margin=theme.margin("chart-margin-line"),
         showlegend=False,
     )
     fig.update_xaxes(title=content.CHART_LABELS.date, tickformat="%b %-d")
@@ -732,9 +721,9 @@ def _closed_by_month_trend(table: pd.DataFrame) -> go.Figure:
             hovertemplate=hovertemplate,
         )
     )
-    _base_layout(fig, title, height=330)
+    _base_layout(fig, title, height=theme.number("chart-height-daily"))
     fig.update_layout(
-        margin=dict(l=72, r=36, t=15, b=57),
+        margin=theme.margin("chart-margin-monthly"),
         showlegend=False,
     )
     fig.update_xaxes(
@@ -776,7 +765,7 @@ def _submitted_by_date_heatmap(table: pd.DataFrame) -> go.Figure:
             z=pivot.values,
             x=[str(value) for value in pivot.columns],
             y=[_wrap_label(value, 22) for value in pivot.index],
-            colorscale=[[0, "#e8f0ff"], [1, PRIMARY]],
+            colorscale=[[0, theme.value("primary-soft")], [1, PRIMARY]],
             hovertemplate=(
                 content.CHART_LABELS.date
                 + ": %{x}<br>"
@@ -788,7 +777,7 @@ def _submitted_by_date_heatmap(table: pd.DataFrame) -> go.Figure:
             colorbar=dict(title=content.CHART_LABELS.submissions),
         )
     )
-    _base_layout(fig, title, height=380)
+    _base_layout(fig, title, height=theme.number("chart-height-heatmap"))
     fig.update_xaxes(title=content.CHART_LABELS.submitted_date)
     fig.update_yaxes(title=content.CHART_LABELS.staff, automargin=True)
     return fig
@@ -889,15 +878,15 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
                 for counts in count_rows
             ],
             texttemplate="%{text}",
-            textfont=dict(color=TEXT, size=13),
+            textfont=dict(color=TEXT, size=theme.number("chart-font-size")),
             customdata=customdata,
             colorscale=colorscale,
             zmin=0,
             zmax=zmax,
             showscale=False,
             showlegend=False,
-            xgap=3,
-            ygap=3,
+            xgap=theme.number("chart-cell-gap"),
+            ygap=theme.number("chart-cell-gap"),
             hoverongaps=False,
             hovertemplate=(
                 content.CHART_LABELS.workflow_step
@@ -916,10 +905,10 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
         )
     )
 
-    height = max(400, 150 + 45 * len(steps))
+    height = max(theme.number("chart-aging-height-min"), theme.number("chart-aging-height-base") + theme.number("chart-aging-row-height") * len(steps))
     _base_layout(fig, title, height=height)
     fig.update_layout(
-        margin=dict(l=250, r=92, t=41, b=26),
+        margin=theme.margin("chart-margin-aging"),
         showlegend=False,
     )
     fig.update_xaxes(
@@ -927,7 +916,7 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
         side="top",
         categoryorder="array",
         categoryarray=list(AGING_BAND_LABELS),
-        tickfont=dict(color=TEXT, size=12),
+        tickfont=dict(color=TEXT, size=theme.number("chart-label-size")),
         showgrid=False,
         automargin=True,
     )
@@ -950,7 +939,7 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
         text=f"<b>{content.CHART_LABELS.step_total}</b>",
         showarrow=False,
         xanchor="left",
-        font=dict(color=MUTED, size=12),
+        font=dict(color=MUTED, size=theme.number("chart-label-size")),
     )
     for step_name, step_total in zip(step_names, steps["step_total"]):
         fig.add_annotation(
@@ -961,7 +950,7 @@ def _workflow_aging_matrix_chart(table: pd.DataFrame) -> go.Figure:
             text=f"<b>{int(step_total):,}</b>",
             showarrow=False,
             xanchor="left",
-            font=dict(color=TEXT, size=13),
+            font=dict(color=TEXT, size=theme.number("chart-font-size")),
         )
     return fig
 
@@ -1071,9 +1060,9 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
                 legendgroup=str(step_name),
                 marker=dict(
                     color=COLORWAY[trace_index % len(COLORWAY)],
-                    size=11,
-                    opacity=0.82,
-                    line=dict(color="#ffffff", width=1),
+                    size=theme.number("chart-point-size"),
+                    opacity=theme.number("chart-point-opacity"),
+                    line=dict(color=theme.value("on-accent"), width=theme.number("chart-point-border-width")),
                 ),
                 customdata=customdata,
                 hovertemplate=(
@@ -1118,9 +1107,9 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
         fig.add_shape(
             **line,
             line=dict(
-                color=PRIMARY_DARK if index != 1 else "#a95516",
-                width=2 if index != 1 else 1.5,
-                dash="solid" if index != 1 else "dash",
+                color=PRIMARY_DARK if index != 1 else theme.value("chart-warning"),
+                width=theme.number("chart-threshold-width" if index != 1 else "chart-aged-threshold-width"),
+                dash=theme.value("chart-threshold-dash" if index != 1 else "chart-aged-threshold-dash"),
             ),
             layer="above",
         )
@@ -1133,7 +1122,7 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
         text=f"<b>{backlog_days:g} days backlog</b>",
         showarrow=False,
         xanchor="right",
-        font=dict(color=PRIMARY_DARK, size=11),
+        font=dict(color=PRIMARY_DARK, size=theme.number("chart-small-label-size")),
     )
     fig.add_annotation(
         x=old_x,
@@ -1143,7 +1132,7 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
         text=f"<b>{old_days:g} days aged</b>",
         showarrow=False,
         xanchor="left",
-        font=dict(color="#a95516", size=11),
+        font=dict(color=theme.value("chart-warning"), size=theme.number("chart-small-label-size")),
     )
     fig.add_annotation(
         x=0.985,
@@ -1154,21 +1143,21 @@ def _age_idle_action_matrix_chart(table: pd.DataFrame) -> go.Figure:
         showarrow=False,
         xanchor="right",
         yanchor="bottom",
-        font=dict(color=PRIMARY_DARK, size=11),
+        font=dict(color=PRIMARY_DARK, size=theme.number("chart-small-label-size")),
     )
 
-    _base_layout(fig, title, height=620)
+    _base_layout(fig, title, height=theme.number("chart-height-risk"))
     fig.update_layout(
-        height=620,
+        height=theme.number("chart-height-risk"),
         showlegend=False,
-        margin=dict(l=82, r=36, t=70, b=72),
+        margin=theme.margin("chart-margin-risk"),
         legend=dict(
             orientation="h",
             yanchor="top",
             y=-0.2,
             xanchor="left",
             x=0,
-            font=dict(size=12, color=MUTED),
+            font=dict(size=theme.number("chart-label-size"), color=MUTED),
         ),
         hovermode="closest",
         meta={
@@ -1208,10 +1197,12 @@ TREND_KEYS = {
 
 def _trend_views(fig: go.Figure, key: str) -> dict[str, go.Figure]:
     """Slice already calculated series, keeping rolling averages and hover data intact."""
-    legend_space = 60 if key == "daily_closures" and fig.data else 0
+    legend_space = theme.number("chart-trend-legend-space") if key == "daily_closures" and fig.data else 0
+    margin = theme.margin("chart-margin-trend")
+    margin["t"] += legend_space
     fig.update_layout(
-        height=360 + legend_space,
-        margin=dict(l=72, r=36, t=15 + legend_space, b=64, autoexpand=key == "closed_by_month"),
+        height=theme.number("chart-height-trend") + legend_space,
+        margin={**margin, "autoexpand": key == "closed_by_month"},
     )
     views = {"all": fig}
     if key == "recent_closures" or not fig.data:
@@ -1402,6 +1393,17 @@ def _plot_divs(
             analytics.generated_at,
         ),
     }
+    figures = {
+        "overview_steps": _bar_chart(
+            analytics.chart_tables["in_the_works_by_step"], "step_name", "count",
+            "Open cases by workflow step", content.CHART_LABELS.open_cases,
+            dynamic_height=True, color_dimension="workflow_step", largest_first=True,
+        ),
+        "overview_completions": _recent_closures_chart(
+            analytics.chart_tables["daily_closures"], analytics.generated_at,
+        ),
+        **figures,
+    }
     divs: dict[str, str] = {}
     include_plotlyjs: bool | str = True
     for key, fig in figures.items():
@@ -1500,7 +1502,7 @@ def _chart_category_list(fig: go.Figure, key: str) -> str:
         f'aria-controls="{plot_id}" data-category-index="{index}" '
         f'data-category-label="{html.escape(str(fig.data[0].labels[index]) if pie else str(label), quote=True)}" '
         f'data-category-kind="{"pie" if pie else "trace"}">'
-        f'<span class="category-swatch" style="background:{html.escape(str(color), quote=True)}" aria-hidden="true"></span>'
+        f'<span class="category-swatch" data-color="{SWATCH_TOKENS[str(color)]}" aria-hidden="true"></span>'
         f'<span class="category-name">{html.escape(str(label))}</span>'
         f"<strong>{html.escape(value)}</strong></button></li>"
         for index, label, color, value in rows
@@ -1519,7 +1521,7 @@ def _help_control(label: str, help_text: str, *, help_id: str) -> str:
 
 
 def _kpi_html(analytics: AnalyticsBundle) -> str:
-    cards = []
+    cards = {}
     for index, kpi in enumerate(analytics.kpis, start=1):
         view_list = ""
         if kpi.key == "notable_observations":
@@ -1532,8 +1534,8 @@ def _kpi_html(analytics: AnalyticsBundle) -> str:
             if kpi.warning_caption
             else ""
         )
-        cards.append(f"""
-        <div class="kpi">
+        cards[kpi.key] = f"""
+        <div class="kpi" data-kpi="{kpi.key}">
           <div class="kpi-heading">
             <span class="kpi-label">{html.escape(kpi.label)}</span>
             {_help_control(kpi.label, kpi.help_text, help_id=f"kpi-help-{index}")}
@@ -1542,8 +1544,48 @@ def _kpi_html(analytics: AnalyticsBundle) -> str:
           {warning_caption}
           {view_list}
         </div>
-        """)
-    return "\n".join(cards)
+        """
+    threshold = format_one_decimal(analytics.presentation.backlog_age_days)
+    backlog_label = f"Backlog · older than {threshold} days"
+    cards["backlog"] = f'''
+      <div class="kpi" data-kpi="backlog">
+        <div class="kpi-heading"><span class="kpi-label">{html.escape(backlog_label)}</span>
+          {_help_control(backlog_label, "Open cases older than the configured backlog threshold. Cases without a valid age are excluded.", help_id="kpi-help-backlog")}
+        </div><strong>{analytics.snapshot_metrics["backlog_count"]:,}</strong>
+      </div>'''
+    primary = "".join(cards[key] for key in (
+        "in_the_works", "backlog", "cases_closed_today", "notable_observations"))
+    supporting = "".join(cards[key] for key in (
+        "total_records", "total_cases_closed", "typical_wait_time", "typical_idle_time"))
+    return f'<div class="kpi-grid">{primary}{supporting}</div>'
+
+
+def _overview_actions_html(analytics: AnalyticsBundle) -> str:
+    table = analytics.chart_tables["age_idle_action_matrix"]
+    risk_count = int(table["action_bucket"].eq("backlog_stale").sum())
+    idle_days = f"{analytics.presentation.stale_idle_days:g}"
+    risk_tag = 'a href="#action-group-backlog_stale"' if risk_count else 'div aria-disabled="true"'
+    risk_close = "a" if risk_count else "div"
+    risk_action = "Open case list →" if risk_count else "No matching cases"
+    return f"""
+      <article class="chart-container overview-actions" aria-labelledby="overview-actions-title">
+        <div class="card-heading"><h2 id="overview-actions-title">Where to look next</h2></div>
+        <{risk_tag} class="overview-action overview-action-risk">
+          <strong class="action-count">{risk_count:,}</strong>
+          <span class="action-description">Backlog cases without activity for {idle_days}+ days
+            <span class="action-link">{risk_action}</span>
+          </span>
+          <span class="action-key" aria-hidden="true">Enter ↵</span>
+        </{risk_close}>
+        <a class="overview-action" href="#problem-rows-table">
+          <strong class="action-count">{len(analytics.exceptions):,}</strong>
+          <span class="action-description">Cases with timing or data-quality observations
+            <span class="action-link">Review all observations →</span>
+          </span>
+        </a>
+        <p class="action-note">Groups can overlap. Waiting does not imply inaction.</p>
+      </article>
+    """
 
 
 def _process_guide_html() -> str:
@@ -1558,27 +1600,20 @@ def _process_guide_html() -> str:
         </div>
         """ for index, item in enumerate(legend.items, start=1))
     return f"""
-    <section class="dashboard-section workflow-legend" aria-labelledby="workflow-legend-title">
-      <div class="legend-card">
+    <dialog class="workflow-guide" id="workflow-guide" aria-labelledby="workflow-legend-title">
         <div class="legend-heading">
           <div>
             <span class="eyebrow">{html.escape(legend.eyebrow)}</span>
             <h2 class="section-title" id="workflow-legend-title">{html.escape(legend.title)}</h2>
           </div>
-          <button type="button" class="legend-toggle" aria-expanded="true"
-                  aria-controls="workflow-legend-content" hidden>
-            <span>Hide guide</span><svg width="16" height="16" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
+          <button type="button" class="guide-button" id="close-workflow-guide" autofocus>Close</button>
         </div>
-        <div class="legend-content" id="workflow-legend-content">
-          <div>
-            <p class="section-copy">{html.escape(legend.description)}</p>
-            <div class="legend-grid">{items}</div>
-          </div>
-        </div>
-      </div>
-    </section>
+        <p class="section-copy">{html.escape(legend.description)}</p>
+        <div class="legend-grid">{items}</div>
+        <section class="report-about"><h3>About this report</h3>
+          {"".join(f"<p>{html.escape(paragraph)}</p>" for paragraph in content.PAGE.intro_paragraphs)}
+        </section>
+    </dialog>
     """
 
 
@@ -1653,7 +1688,7 @@ def _age_idle_action_matrix_card(
         count = int(counts.get(bucket, 0))
         disabled = " disabled" if count == 0 else ""
         buttons.append(f"""
-            <button type="button" class="action-group-button action-group-{html.escape(bucket)}"
+            <button type="button" id="action-group-{html.escape(bucket)}" class="action-group-button action-group-{html.escape(bucket)}"
                     data-action-bucket="{html.escape(bucket)}"
                     aria-controls="age-idle-action-drilldown"
                     aria-pressed="false"{disabled}>
@@ -1703,8 +1738,7 @@ def _age_idle_action_matrix_card(
               <p id="age-idle-action-drilldown-summary" aria-live="polite"></p>
             </div>
             <button type="button" class="action-drilldown-clear" id="age-idle-action-clear">
-              <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false"
-                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="m6 6 12 12M6 18 18 6"/>
               </svg>
               <span>Close List</span>
@@ -1737,7 +1771,7 @@ def _age_idle_action_matrix_card(
             const body = document.getElementById("age-idle-action-rows");
             const clear = document.getElementById("age-idle-action-clear");
             const buttons = Array.from(
-              document.querySelectorAll("[data-action-bucket]")
+              controls.querySelectorAll("[data-action-bucket]")
             );
             const labels = {_json_for_script(bucket_labels)};
             const rows = source ? JSON.parse(source.textContent) : [];
@@ -1798,16 +1832,16 @@ def _age_idle_action_matrix_card(
               if (scrollToDrilldown) scrollToElement(drilldown);
             }};
 
+            const selectBucket = (button, scroll) => {{
+              const bucket = button.dataset.actionBucket;
+              renderRows(
+                rows.filter((record) => record.action_bucket === bucket),
+                labels[bucket], bucket, scroll
+              );
+            }};
             buttons.forEach((button) => {{
-              button.addEventListener("click", () => {{
-                const bucket = button.dataset.actionBucket;
-                renderRows(
-                  rows.filter((record) => record.action_bucket === bucket),
-                  labels[bucket],
-                  bucket,
-                  true
-                );
-              }});
+              button.addEventListener("click", () => selectBucket(button, true));
+              button.addEventListener("dashboard-select-action-group", () => selectBucket(button, false));
             }});
 
             if (plot && typeof plot.on === "function") {{
@@ -1947,9 +1981,7 @@ def _observation_cell(column: str, value: object) -> str:
     }.get("".join(str(value).casefold().split()))
     kind, drawing = status if status else ("unknown", "")
     icon = (
-        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" '
-        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
-        f'stroke-linejoin="round">{drawing}</svg>'
+        f'<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{drawing}</svg>'
         if drawing
         else ""
     )
@@ -1957,18 +1989,18 @@ def _observation_cell(column: str, value: object) -> str:
 
 
 def _table_html(exceptions: pd.DataFrame) -> str:
-    columns = {
-        "exception_reasons": 260,
-        "record_id": 140,
-        "item_label": 260,
-        "step_name": 320,
-        "status": 160,
-        "owner": 180,
-        "age_days": 150,
-        "idle_days": 200,
-        "submitted_at": 200,
-        "last_activity_at": 200,
-    }
+    columns = (
+        "exception_reasons",
+        "record_id",
+        "item_label",
+        "step_name",
+        "status",
+        "owner",
+        "age_days",
+        "idle_days",
+        "submitted_at",
+        "last_activity_at",
+    )
     if exceptions.empty:
         return (
             '<div class="empty-table">'
@@ -2008,14 +2040,9 @@ def _table_html(exceptions: pd.DataFrame) -> str:
             for column, value in row.items()
         )
         rows.append(f"<tr>{cells}</tr>")
-    width = sum(columns[column] for column in table.columns)
-    colgroup = "".join(
-        f'<col data-field="{column}" style="--column-width: {columns[column]}px; '
-        f'--print-width: {columns[column] / width * 100:.4f}%">'
-        for column in table.columns
-    )
+    colgroup = "".join(f'<col data-field="{column}">' for column in table.columns)
     return (
-        f'<table class="data-table observation-table" style="--table-width: {width}px">'
+        '<table class="data-table observation-table">'
         f"<colgroup>{colgroup}</colgroup><thead><tr>{headers}</tr></thead>"
         f'<tbody>{"".join(rows)}</tbody></table>'
     )
@@ -2098,10 +2125,7 @@ def render_dashboard(
     sections = content.SECTION_CONTENT
     evaluation_table_copy = content.EVALUATION_TYPE_TABLE
     observation_copy = content.OBSERVATION_TABLE
-    intro_html = "\n".join(
-        f"      <p>{html.escape(paragraph)}</p>"
-        for paragraph in page_copy.intro_paragraphs
-    )
+    intro_html = "<p>A clear snapshot of transfer credit workload, progress, and cases to review.</p>"
     table_summary = observation_copy.summary_template.format(
         shown=shown_exceptions,
         total=len(analytics.exceptions),
@@ -2110,11 +2134,13 @@ def render_dashboard(
         "sections",
         "Dashboard sections",
         (
+            ("overview-panel", "Dashboard Overview"),
             ("operations-panel", sections["operations"].title),
-            ("evaluation-types-panel", sections["evaluation_types"].title),
-            ("trends-panel", sections["trends"].title),
-            ("staff-panel", sections["staff"].title),
-            ("exceptions-panel", sections["exceptions"].title),
+            ("risk-panel", "Risk Overview"),
+            ("evaluation-types-panel", "Evaluation Types"),
+            ("trends-panel", "Trends"),
+            ("staff-panel", "Submission Activity"),
+            ("exceptions-panel", "Observations"),
         ),
     )
     workload_tabs = tab_bar(
@@ -2123,7 +2149,6 @@ def render_dashboard(
         (
             ("case-metrics-panel", "Case Metrics"),
             ("aging-panel", content.CHART_CONTENT["workflow_aging_matrix"].title),
-            ("risk-panel", content.CHART_CONTENT["age_idle_action_matrix"].title),
         ),
     )
     staff_tabs = tab_bar(
@@ -2149,716 +2174,24 @@ def render_dashboard(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(analytics.dashboard_title)}</title>
   <style>
-    :root {{
-      --background: {BG};
-      --surface: #ffffff;
-      --surface-muted: {SURFACE_MUTED};
-      --border: {BORDER};
-      --border-strong: #cbd6e2;
-      --text: {TEXT};
-      --muted: {MUTED};
-      --primary: {PRIMARY};
-      --primary-dark: {PRIMARY_DARK};
-      --primary-soft: #e8f0ff;
-      --shadow: 0 10px 28px rgba(34, 49, 73, 0.07);
-    }}
-    *, *::before, *::after {{ box-sizing: border-box; }}
-    html {{
-      background: var(--background);
-      scroll-behavior: smooth;
-    }}
-    body {{
-      background: var(--background);
-      color: var(--text);
-      font-family: {FONT_FAMILY};
-      letter-spacing: 0;
-      line-height: 1.5;
-      margin: 0;
-      min-width: 0;
-      overflow-x: hidden;
-    }}
-    .dashboard-shell {{
-      margin: 0 auto;
-      max-width: 1680px;
-      padding: 28px 32px 48px;
-      width: 100%;
-    }}
-    .dashboard-header {{
-      background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-      padding: 24px 28px;
-    }}
-    .header-top {{
-      align-items: center;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 20px;
-      justify-content: space-between;
-    }}
-    .header-utility-row {{
-      align-items: center;
-      border-top: 1px solid var(--border);
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px 20px;
-      justify-content: space-between;
-      margin-top: 18px;
-      padding-top: 12px;
-    }}
-    .dashboard-header h1 {{ margin-top: 10px; }}
-    .header-top .eyebrow {{ margin-bottom: 0; }}
-    .dashboard-header .generated-at {{
-      color: var(--text);
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1.4;
-      margin: 0;
-      padding-left: 18px;
-      position: relative;
-    }}
-    .generated-at::before {{
-      background: var(--primary);
-      border-radius: 50%;
-      content: "";
-      height: 8px;
-      left: 0;
-      position: absolute;
-      top: 0.45em;
-      width: 8px;
-    }}
-    .dashboard-header .authorship-credit {{
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.35;
-      margin: 0;
-    }}
-    .authorship-credit strong {{
-      color: inherit;
-      font-weight: 600;
-    }}
-    .eyebrow {{
-      color: var(--primary-dark);
-      display: block;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-    }}
-    h1 {{
-      color: var(--text);
-      font-size: clamp(28px, 3vw, 38px);
-      letter-spacing: 0;
-      line-height: 1.16;
-      margin: 0;
-    }}
-    h2 {{ margin: 0; }}
-    .dashboard-header p {{
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.7;
-      margin: 18px 0 0;
-      max-width: 980px;
-    }}
-    .dashboard-section {{ margin-top: 16px; }}
-    .section-heading {{ margin-bottom: 8px; }}
-    .section-title {{
-      color: var(--text);
-      font-size: 23px;
-      letter-spacing: 0;
-      line-height: 1.25;
-    }}
-    .section-copy {{
-      color: var(--muted);
-      font-size: 14px;
-      margin: 5px 0 0;
-    }}
-    .kpi-grid {{
-      display: grid;
-      gap: 12px;
-      grid-auto-rows: 1fr;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-    }}
-    .kpi {{
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      box-shadow: 0 4px 14px rgba(34, 49, 73, 0.05);
-      padding: 8px 12px;
-      text-align: center;
-      justify-content: center;
-      position: relative;
-    }}
-    .kpi:hover,
-    .kpi:focus-within {{ z-index: 10; }}
-    .kpi-heading {{
-      align-items: flex-start;
-      display: flex;
-      justify-content: center;
-      gap: 6px;
-      min-height: 32.5px;
-      text-align: center;
-    }}
-    .kpi-label {{
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 600;
-      line-height: 1.25;
-    }}
-    .kpi strong {{
-      color: var(--text);
-      display: block;
-      font-size: clamp(22px, 1.8vw, 28px);
-      letter-spacing: 0;
-      line-height: 1.15;
-      margin-top: 6px;
-      overflow-wrap: anywhere;
-    }}
-    .kpi-warning {{
-      color: #a33a16;
-      display: block;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.3;
-      margin-top: 4px;
-    }}
-    .kpi-link {{
-      color: var(--primary-dark);
-      display: inline-block;
-      font-size: 13px;
-      font-weight: 700;
-      margin-top: 4px;
-      text-decoration: none;
-    }}
-    .kpi-link:hover {{ text-decoration: underline; }}
-    .legend-card {{
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: var(--shadow);
-      padding: 16px 22px;
-    }}
-    .legend-heading {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }}
-    .legend-heading > div {{ min-width: 0; }}
-    .legend-heading .section-title {{ font-size: 18px; }}
-    .legend-toggle {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      flex: 0 0 auto;
-      gap: 8px;
-      width: 124px;
-      min-height: 44px;
-      padding: 8px 12px;
-      border: 1px solid var(--border-strong);
-      border-radius: 8px;
-      background: var(--surface);
-      color: var(--primary-dark);
-      cursor: pointer;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-    }}
-    .legend-toggle[hidden] {{ display: none; }}
-    .legend-toggle:hover {{ background: var(--primary-soft); }}
-    .legend-toggle:focus-visible {{ outline: 3px solid var(--primary); outline-offset: 3px; }}
-    .legend-toggle svg {{ flex: 0 0 auto; transform: rotate(180deg); transition: transform 220ms ease; }}
-    .legend-toggle[aria-expanded="false"] svg {{ transform: rotate(0); }}
-    .legend-content {{ display: grid; grid-template-rows: 1fr; visibility: visible; }}
-    .guide-ready .legend-content {{
-      transition: grid-template-rows 220ms cubic-bezier(0.2, 0, 0, 1), visibility 220ms;
-    }}
-    .legend-content.is-collapsed {{ grid-template-rows: 0fr; visibility: hidden; }}
-    .legend-content > div {{ min-height: 0; overflow: hidden; }}
-    .legend-content .section-copy {{ margin-top: 12px; }}
-    .legend-grid {{
-      display: grid;
-      gap: 18px 56px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin-top: 20px;
-    }}
-    .legend-item {{
-      display: grid;
-      gap: 12px;
-      grid-template-columns: 24px minmax(0, 1fr);
-    }}
-    .legend-number {{
-      color: var(--text);
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.35;
-    }}
-    .legend-item h3 {{
-      color: var(--text);
-      font-size: 15px;
-      line-height: 1.35;
-      margin: 0;
-    }}
-    .legend-item p {{
-      color: var(--muted);
-      font-size: 14px;
-      margin: 4px 0 0;
-    }}
-    .chart-container,
-    .table-container {{
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      min-width: 0;
-      position: relative;
-    }}
-    .chart-container {{
-      margin-bottom: 12px;
-      overflow: hidden;
-      padding: 20px 22px 14px;
-    }}
-    .chart-stack .chart-container:last-child {{ margin-bottom: 0; }}
-    .table-container {{
-      overflow: hidden;
-      padding: 20px 22px 22px;
-      scroll-margin-top: 20px;
-    }}
-    .card-heading {{
-      align-items: center;
-      display: flex;
-      gap: 8px;
-      justify-content: flex-start;
-      min-height: 28px;
-      position: relative;
-      z-index: 2;
-    }}
-    .card-heading h2 {{
-      color: var(--text);
-      font-size: 18px;
-      letter-spacing: 0;
-      line-height: 1.3;
-    }}
-    .chart-container .js-plotly-plot,
-    .chart-container .plot-container,
-    .chart-container .svg-container {{
-      max-width: 100%;
-    }}
-    .chart-container .js-plotly-plot .modebar-btn {{ font-family: {FONT_FAMILY}; }}
-    .help-control {{
-      display: inline-flex;
-      flex: 0 0 auto;
-      position: relative;
-    }}
-    .info-button {{
-      align-items: center;
-      background: var(--primary-soft);
-      border: 1px solid #b9cdf7;
-      border-radius: 50%;
-      color: var(--primary-dark);
-      cursor: help;
-      display: inline-flex;
-      font-family: inherit;
-      font-size: 12px;
-      font-style: italic;
-      font-weight: bold;
-      height: 18px;
-      justify-content: center;
-      line-height: 1;
-      padding: 0;
-      width: 18px;
-    }}
-    .info-button:hover {{ background: #dce8ff; }}
-    .info-button:focus-visible,
-    .kpi-link:focus-visible,
-    .action-group-button:focus-visible,
-    .action-drilldown-clear:focus-visible,
-    .jump-to-top:focus-visible {{
-      outline: 3px solid rgba(37, 99, 235, 0.28);
-      outline-offset: 2px;
-    }}
-    .info-tooltip {{
-      background: var(--text);
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: normal;
-      left: 0;
-      line-height: 1.4;
-      max-width: 360px;
-      min-width: 240px;
-      opacity: 0;
-      padding: 10px 12px;
-      pointer-events: none;
-      position: absolute;
-      text-align: left;
-      top: 26px;
-      transform: translateY(-4px);
-      transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
-      visibility: hidden;
-      white-space: normal;
-      z-index: 20;
-    }}
-    .kpi .info-tooltip {{
-      left: auto;
-      right: 0;
-    }}
-    .card-heading .help-control {{ position: static; }}
-    .card-heading .info-tooltip {{
-      max-width: 100%;
-      min-width: 0;
-      top: 100%;
-      width: 360px;
-    }}
-    .help-control:hover .info-tooltip,
-    .help-control:focus-within .info-tooltip {{
-      opacity: 1;
-      transform: translateY(0);
-      visibility: visible;
-    }}
-    .current-open-grid,
-    .trend-grid {{
-      display: grid;
-      gap: 12px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }}
-    .current-open-grid .chart-container,
-    .trend-grid .chart-container {{ margin-bottom: 0; }}
-    .current-open-grid .chart-container-wide {{
-      grid-column: 1 / -1;
-      overflow-x: auto;
-    }}
-    .chart-container-wide .js-plotly-plot {{
-      max-width: none;
-      min-width: 720px;
-    }}
-    .chart-container-wide .card-heading {{
-      background: var(--surface);
-      left: 0;
-      position: sticky;
-      z-index: 3;
-    }}
-    .action-matrix-coverage {{
-      color: var(--muted);
-      font-size: 13px;
-      margin: 7px 0 12px;
-    }}
-    .action-matrix-controls {{
-      display: grid;
-      gap: 10px;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      margin-bottom: 4px;
-      scroll-margin-top: 24px;
-    }}
-    .action-group-button {{
-      align-items: center;
-      background: var(--surface-muted);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      cursor: pointer;
-      display: flex;
-      font: inherit;
-      gap: 10px;
-      justify-content: space-between;
-      min-height: 54px;
-      padding: 9px 12px;
-      text-align: left;
-    }}
-    .action-group-button span {{
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.25;
-    }}
-    .action-group-button strong {{
-      font-size: 20px;
-      line-height: 1;
-    }}
-    .action-group-young_active {{ border-top: 3px solid #2f855a; }}
-    .action-group-young_stale {{ border-top: 3px solid #c89b19; }}
-    .action-group-backlog_active {{ border-top: 3px solid #e8792e; }}
-    .action-group-backlog_stale {{ border-top: 3px solid #b4233c; }}
-    .action-group-button:hover:not(:disabled),
-    .action-group-button[aria-pressed="true"] {{
-      background: var(--primary-soft);
-      border-color: #9cb9f2;
-    }}
-    .action-group-button:disabled {{
-      cursor: default;
-      border-top-color: var(--border);
-      opacity: 0.55;
-    }}
-    .action-matrix-drilldown {{
-      border-top: 1px solid var(--border);
-      margin-top: 10px;
-      padding-top: 16px;
-      scroll-margin-top: 24px;
-    }}
-    .action-matrix-drilldown[hidden] {{ display: none; }}
-    .action-drilldown-heading {{
-      align-items: center;
-      display: flex;
-      gap: 16px;
-      justify-content: space-between;
-      margin-bottom: 10px;
-    }}
-    .action-drilldown-heading h3 {{
-      font-size: 16px;
-      margin: 0;
-    }}
-    .action-drilldown-heading p {{
-      color: var(--muted);
-      font-size: 13px;
-      margin: 2px 0 0;
-    }}
-    .action-drilldown-clear {{
-      align-items: center;
-      background: var(--surface);
-      border: 1px solid var(--border-strong);
-      border-radius: 7px;
-      color: var(--primary-dark);
-      cursor: pointer;
-      display: inline-flex;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      gap: 6px;
-      padding: 7px 11px;
-      white-space: nowrap;
-    }}
-    .action-drilldown-scroll {{
-      max-height: 360px;
-      overflow: auto;
-    }}
-    .action-drilldown-table {{
-      min-width: 680px;
-    }}
-    .action-drilldown-table th:nth-child(3),
-    .action-drilldown-table th:nth-child(4),
-    .action-drilldown-table td:nth-child(3),
-    .action-drilldown-table td:nth-child(4) {{
-      text-align: right;
-    }}
-    .trend-grid .chart-container {{ display: flex; flex-direction: column; }}
-    .trend-plot {{ margin-top: auto; min-width: 0; }}
-    .trend-year-controls {{ display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 8px 0; font-size: 12px; }}
-    .trend-year-chip {{ border: 1px solid var(--border); border-radius: 16px; padding: 5px 10px; background: var(--surface-muted); color: var(--text); font: inherit; }}
-    button.trend-year-chip {{ cursor: pointer; }}
-    .trend-year-chip[aria-pressed="true"] {{ background: var(--primary-soft); border-color: var(--primary); }}
-    .trend-year-chip:focus-visible {{ outline: 2px solid var(--primary); outline-offset: 2px; }}
-    @media (pointer: coarse) {{ .trend-year-chip {{ min-height: 44px; }} }}
-    .trend-grid .chart-container:last-child:nth-child(odd) {{ grid-column: 1 / -1; }}
-    .table-card-header,
-    .table-card-footer {{
-      align-items: center;
-      display: flex;
-      gap: 16px;
-      justify-content: space-between;
-    }}
-    .table-card-header {{ margin-bottom: 14px; }}
-    .table-card-header .card-heading {{ flex: 1; min-width: 0; }}
-    .table-card-footer {{
-      border-top: 1px solid var(--border);
-      margin-top: 14px;
-      padding-top: 14px;
-    }}
-    .table-summary {{
-      color: var(--muted);
-      font-size: 13px;
-    }}
-    .table-scroll {{
-      max-height: 560px;
-      overflow-x: auto;
-    }}
-    .data-table {{
-      border-collapse: separate;
-      border-spacing: 0;
-      font-size: 13px;
-      min-width: 980px;
-      width: 100%;
-    }}
-    .data-table th,
-    .data-table td {{
-      border-bottom: 1px solid var(--border);
-      overflow-wrap: anywhere;
-      padding: 10px 11px;
-      text-align: left;
-      vertical-align: top;
-    }}
-    .data-table th {{
-      background: var(--surface-muted);
-      color: #34435a;
-      font-size: 12px;
-      letter-spacing: 0;
-      position: sticky;
-      text-transform: uppercase;
-      top: 0;
-      z-index: 1;
-    }}
-    .data-table tbody tr:hover {{ background: #f7faff; }}
-    #problem-rows-table .observation-table {{
-      width: var(--table-width);
-      min-width: var(--table-width);
-      table-layout: fixed;
-    }}
-    .observation-table col {{ width: var(--column-width); }}
-    #problem-rows-table th {{
-      white-space: nowrap;
-      word-break: normal;
-      overflow-wrap: normal;
-    }}
-    #problem-rows-table td {{
-      white-space: normal;
-      word-break: normal;
-      overflow-wrap: break-word;
-    }}
-    .observation-chip {{
-      display: inline-flex;
-      align-items: flex-start;
-      gap: 5px;
-      max-width: 100%;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      padding: 4px 7px;
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 1.4;
-      color: #334155;
-      background: #fff;
-    }}
-    .observation-chip > span {{ min-width: 0; }}
-    .observation-chip svg {{ width: 14px; height: 14px; flex: 0 0 14px; margin-top: 1px; }}
-    .workflow-chip {{ background: #f1f5f9; }}
-    .status-progress {{ background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }}
-    .status-review {{ background: #fffbeb; color: #92400e; border-color: #fde68a; }}
-    .status-completed {{ background: #f0fdf4; color: #166534; border-color: #bbf7d0; }}
-    .evaluation-type-table-container .table-scroll {{
-      max-height: none;
-    }}
-    .evaluation-type-table-container .empty-table {{
-      text-align: center;
-    }}
-    .evaluation-type-table {{
-      min-width: 1080px;
-    }}
-    .evaluation-type-table th,
-    .evaluation-type-table td {{
-      text-align: center;
-      white-space: nowrap;
-    }}
-    .evaluation-type-name {{
-      color: var(--text);
-      font-size: 14px;
-      min-width: 150px;
-    }}
-    .metric-cell {{
-      min-width: 145px;
-      white-space: nowrap;
-    }}
-    .metric-cell strong {{
-      display: block;
-      font-size: 14px;
-    }}
-    .empty-table {{
-      border: 1px dashed var(--border);
-      border-radius: 8px;
-      color: var(--muted);
-      padding: 22px;
-    }}
-    .donut-layout {{ display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: center; gap: 24px; }}
-    .donut-plot {{ min-width: 0; }}
-    .chart-category-list {{ list-style: none; padding: 0; margin: 12px 0; }}
-    .category-toggle {{ display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; min-height: 44px; padding: 10px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font: inherit; font-size: 14px; cursor: pointer; }}
-    .category-toggle:hover {{ background: var(--surface-muted); }}
-    .category-toggle:focus-visible {{ outline: 3px solid var(--primary); }}
-    .category-toggle[aria-pressed="false"] .category-name {{ text-decoration: line-through; opacity: .65; }}
-    .category-name {{ overflow-wrap: anywhere; }}
-    .category-swatch {{ width: 12px; height: 12px; border-radius: 2px; }}
-    .risk-plot-scroll {{ overflow-x: auto; }}
-    .current-open-grid .action-matrix-card {{ overflow: visible; min-width: 0; }}
-    .action-matrix-card .chart-category-list {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }}
-    @media (max-width: 719px) {{
-      .donut-layout {{ grid-template-columns: minmax(0, 1fr); gap: 4px; }}
-      .donut-plot {{ width: 100%; max-width: 420px; margin: auto; }}
-    }}
-    .page-footer {{
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 24px;
-    }}
-    .jump-to-top {{
-      color: var(--primary-dark);
-      font-size: 14px;
-      font-weight: 700;
-      text-decoration: none;
-    }}
-    .jump-to-top:hover {{ text-decoration: underline; }}
-    @media (max-width: 1400px) {{
-      .kpi-grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
-      .kpi-heading {{ min-height: 18px; }}
-    }}
-    @media (max-width: 1050px) {{
-      .dashboard-shell {{ padding: 24px 22px 40px; }}
-      .kpi-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
-      .current-open-grid,
-      .trend-grid {{ grid-template-columns: 1fr; }}
-      .trend-grid .chart-container:last-child:nth-child(odd) {{ grid-column: auto; }}
-    }}
-    @media (max-width: 720px) {{
-      .header-top {{ align-items: flex-start; flex-direction: column; }}
-      .header-utility-row {{ align-items: flex-start; }}
-      .dashboard-header {{ padding: 21px 22px; }}
-      .kpi-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      .legend-grid {{ grid-template-columns: 1fr; }}
-      .action-matrix-controls {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      .chart-container {{ padding: 18px 16px 12px; }}
-      .table-container {{ padding: 18px 16px; }}
-      .table-card-header,
-      .table-card-footer {{
-        align-items: stretch;
-        flex-direction: column;
-      }}
-    }}
-    @media (max-width: 520px) {{
-      .dashboard-shell {{ padding: 14px 12px 30px; }}
-      .legend-card {{ padding: 14px 16px; }}
-      .kpi-grid {{ grid-template-columns: 1fr; }}
-      .card-heading h2 {{ font-size: 16px; }}
-      .section-title {{ font-size: 21px; }}
-      .chart-container {{
-        border-radius: 8px;
-        padding: 16px 10px 10px;
-      }}
-      .table-container {{ border-radius: 8px; }}
-      .action-matrix-controls {{ grid-template-columns: 1fr; }}
-    }}
-    @media (prefers-reduced-motion: reduce) {{
-      html {{ scroll-behavior: auto; }}
-      .guide-ready .legend-content, .legend-toggle svg {{ transition: none; }}
-    }}
-{NAVIGATION_STYLES}
-{PRINT_STYLES}
-{TOOLTIP_STYLES}
+{theme.STYLESHEET}
   </style>
 </head>
-<body>
-  <main class="dashboard-shell" id="dashboard-top">
-    <header class="dashboard-header">
-      <div class="header-top">
-        <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
-        <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
-      </div>
-      <h1>{html.escape(analytics.dashboard_title)}</h1>
-      <div class="header-utility-row">
-        <p class="generated-at">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</p>
+<body id="dashboard-top">
+  <header class="university-masthead">
+    <span class="university-name">UMASS LOWELL</span>
+    <span class="university-team">OFFICE OF THE REGISTRAR - TRANSFER CREDIT TEAM</span>
+  </header>
+  <main class="dashboard-shell">
+    <div class="dashboard-tabs" id="dashboard-tabs">
+    <aside class="dashboard-sidebar" aria-label="Report navigation">
+      {main_tabs}
+      <div class="sidebar-utilities">
         <div class="pdf-export">
           <p class="pdf-export-status" id="pdf-export-status" role="status" aria-live="polite"></p>
           <div class="pdf-export-control">
             <button type="button" id="save-pdf" aria-describedby="pdf-export-hint">
-              <svg class="pdf-printer-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <svg class="pdf-printer-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
                 <rect x="6" y="14" width="12" height="7" rx="1"/><path d="M18 12h.01"/>
               </svg>
@@ -2868,22 +2201,39 @@ def render_dashboard(
             <span id="pdf-export-hint" class="pdf-export-hint" role="tooltip">{html.escape(page_copy.save_pdf_hint)}</span>
           </div>
         </div>
+        <button type="button" class="guide-button" id="show-workflow-guide"
+                aria-haspopup="dialog" aria-controls="workflow-guide">Process guide</button>
+        <p class="authorship-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
+        <p class="sidebar-generated-at">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</p>
+      </div>
+    </aside>
+    <div id="overview-panel" data-tab-panel="sections" aria-labelledby="overview-title">
+    <header class="dashboard-header">
+      <div class="header-top">
+        <span class="eyebrow">{html.escape(page_copy.team_eyebrow)}</span>
+        <p class="authorship-credit print-credit"><span>{html.escape(page_copy.authorship_prefix)} </span><strong>{html.escape(page_copy.author_name)}</strong></p>
+      </div>
+      <h1>{html.escape(analytics.dashboard_title)}</h1>
+      <div class="header-utility-row">
+        <p class="generated-at">{html.escape(page_copy.generated_prefix)} {html.escape(generated)}</p>
       </div>
 {intro_html}
     </header>
-
-    {_process_guide_html()}
 
     <section class="dashboard-section" aria-labelledby="overview-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["overview"].eyebrow)}</span>
         <h2 class="section-title" id="overview-title">{html.escape(sections["overview"].title)}</h2>
       </div>
-      <div class="kpi-grid">{_kpi_html(analytics)}</div>
+      {_kpi_html(analytics)}
+      <div class="overview-charts">
+        <article class="chart-container" aria-label="Open cases by workflow step"><div class="card-heading"><h2>Open cases by workflow step</h2></div>{divs["overview_steps"]}<a class="overview-link" href="#case-metrics-panel">Explore workload</a></article>
+        {_chart_card(divs["overview_completions"], "recent_closures", help_id="overview-completions-help", context=analytics.presentation)}
+        {_overview_actions_html(analytics)}
+      </div>
     </section>
+    </div>
 
-    <div class="dashboard-tabs" id="dashboard-tabs">
-    {main_tabs}
     <section class="dashboard-section" id="operations-panel" data-tab-panel="sections" aria-labelledby="operations-title">
       <div class="section-heading">
         <span class="eyebrow">{html.escape(sections["operations"].eyebrow)}</span>
@@ -2904,10 +2254,15 @@ def render_dashboard(
         {_chart_card(divs["workflow_aging_matrix"], "workflow_aging_matrix", help_id="workflow-aging-matrix-help", extra_class="chart-container-wide", context=analytics.presentation)}
       </div>
       </div>
-      <div id="risk-panel" data-tab-panel="operations">
+    </section>
+
+    <section class="dashboard-section" id="risk-panel" data-tab-panel="sections" aria-labelledby="risk-title">
+      <div class="section-heading">
+        <span class="eyebrow">Current snapshot</span>
+        <h2 class="section-title" id="risk-title">Risk Overview</h2>
+      </div>
       <div class="current-open-grid">
         {matrix_card}
-      </div>
       </div>
     </section>
 
@@ -2978,11 +2333,11 @@ def render_dashboard(
         </div>
       </div>
     </section>
-    </div>
-
     <footer class="page-footer">
       <a class="jump-to-top" href="#dashboard-top">{html.escape(page_copy.jump_to_top)}</a>
     </footer>
+    </div>
+    {_process_guide_html()}
   </main>
   {TOOLTIP_SCRIPT}
   {NAVIGATION_SCRIPT}

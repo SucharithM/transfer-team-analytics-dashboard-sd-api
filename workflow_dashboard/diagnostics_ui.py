@@ -1,6 +1,9 @@
 """Explicit, local preview and clipboard sharing of immutable safe reports."""
 
 
+from . import theme
+
+
 def open_preview(root, session):
     import tkinter as tk
     from tkinter import ttk
@@ -10,12 +13,12 @@ def open_preview(root, session):
         return
     window = tk.Toplevel(root)
     window.title('Error Logs')
-    window.geometry('820x560')
-    frame = ttk.Frame(window, padding=16)
+    window.geometry(theme.value("native-logs-size"))
+    frame = ttk.Frame(window, padding=theme.number("native-logs-padding"))
     frame.pack(fill='both', expand=True)
     ttk.Label(frame, text='Review these technical diagnostics, then copy them into your support message.').pack(anchor='w')
     selection = ttk.Combobox(frame, state='readonly', values=[f'Attempt {index + 1} · {identifier[:8]}' for index, (identifier, _) in enumerate(reports)])
-    selection.pack(fill='x', pady=8)
+    selection.pack(fill='x', pady=theme.number("native-logs-selection-gap"))
     selection.current(0)
     body = ttk.Frame(frame)
     body.pack(fill='both', expand=True)
@@ -47,8 +50,8 @@ def open_preview(root, session):
     selection.bind('<<ComboboxSelected>>', show)
     show()
     buttons = ttk.Frame(frame)
-    buttons.pack(fill='x', pady=(12, 4))
+    buttons.pack(fill='x', pady=theme.integers("native-logs-buttons-gap"))
     ttk.Button(buttons, text='Copy Logs', command=copy).pack(side='left')
     ttk.Button(buttons, text='Close', command=window.destroy).pack(side='right')
-    ttk.Label(frame, textvariable=notice, wraplength=760).pack(anchor='w')
+    ttk.Label(frame, textvariable=notice, wraplength=theme.number("native-logs-wrap")).pack(anchor='w')
     return window

@@ -13,125 +13,139 @@ def _settled(page):
     page.wait_for_function("""() => {
       const shell = document.querySelector('.dashboard-tabs');
       return !shell.style.minHeight && Array.from(document.querySelectorAll('.tab-panels'))
-        .every(host => !host.style.height);
+        .every(host => !host.style.height) && [...document.querySelectorAll('.js-plotly-plot')]
+        .filter(plot => plot.getClientRects().length)
+        .every(plot => Math.abs(plot._fullLayout.width - plot.clientWidth) < 2);
     }""")
+
+
+@pytest.mark.parametrize('width', [1440, 2560])
+def test_scrollbar_space_is_only_used_when_the_section_needs_scrolling(page, tmp_path, width):
+    page.set_viewport_size({'width': width, 'height': 900})
+    _open(page, _report(tmp_path / 'scrollbar.html'))
+    for section, scrolling in [('staff-panel', False), ('trends-panel', True),
+                               ('staff-panel', False)]:
+        page.locator('#tab-' + section).click()
+        _settled(page)
+        assert page.evaluate('document.documentElement.scrollHeight > innerHeight') == scrolling
+        if scrolling:
+            page.evaluate("window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'})")
+            assert page.evaluate('scrollY') > 0
+        else:
+            assert page.evaluate('document.documentElement.clientWidth === innerWidth')
+            assert page.locator('.university-masthead').bounding_box()['width'] == width
+        page.wait_for_function("""() => [...document.querySelectorAll('.js-plotly-plot')]
+          .filter(plot => plot.getClientRects().length)
+          .every(plot => Math.abs(plot._fullLayout.width - plot.clientWidth) < 2)""")
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
+        if artifact_dir:
+            page.screenshot(path=str(Path(artifact_dir) / f'scrollbar-{section}-{width}.png'))
 
 
 @pytest.mark.parametrize("width", [1440, 720, 390])
-def test_process_guide_reflows_without_gaps_or_chart_distortion(page, tmp_path, width):
-    page.set_viewport_size({"width": width, "height": 900})
+def test_process_guide_modal_is_available_from_every_section(page, tmp_path, width):
+    page.set_viewport_size({"width": width, "height": 700 if width == 390 else 900})
     _open(page, _report(tmp_path / "report.html"))
-    toggle = page.locator(".legend-toggle")
-    expect(toggle).to_have_accessible_name("Show guide")
-    guide = page.locator(".legend-card")
-    content = page.locator("#workflow-legend-content")
-    expect(toggle).to_have_attribute("aria-expanded", "false")
-    expect(content).to_be_hidden()
-    collapsed = guide.bounding_box()["height"]
-    tabs_top = page.locator(".dashboard-tabs").evaluate("shell => shell.offsetTop")
-    assert collapsed < (150 if width == 390 else 110)
-    assert toggle.bounding_box()["height"] >= 44
-    toggle.focus()
-    toggle.press("Enter")
-    expect(toggle).to_have_attribute("aria-expanded", "true")
-    page.wait_for_function("() => !document.querySelector('.legend-card').getAnimations({subtree: true}).length")
-    expanded = guide.bounding_box()["height"]
-    assert expanded > collapsed + 120
-    expect(page.locator(".legend-item:visible")).to_have_count(6)
-    assert content.evaluate("el => el.scrollHeight <= el.clientHeight + 1")
-    assert page.locator(".dashboard-tabs").evaluate("shell => shell.offsetTop") - tabs_top == pytest.approx(expanded - collapsed, abs=1)
-    artifact_dir = os.environ.get("DASHBOARD_PDF_ARTIFACT_DIR")
-    if artifact_dir:
-        guide.screenshot(path=str(Path(artifact_dir) / f"guide-expanded-{width}.png"))
-    # Sample the actual layout while closing, including space reclaimed above the tabs.
-    heights = toggle.evaluate("""button => new Promise(resolve => {
-      button.click();
-      const guide = button.closest('.legend-card');
-      const heights = [];
-      const sample = () => {
-        heights.push(guide.getBoundingClientRect().height);
-        if (guide.getAnimations({subtree: true}).length) requestAnimationFrame(sample);
-        else resolve(heights);
-      };
-      requestAnimationFrame(sample);
-    })""")
-    assert any(collapsed + 1 < height < expanded - 1 for height in heights)
-    assert all(a >= b - 1 for a, b in zip(heights, heights[1:]))
-    assert guide.bounding_box()["height"] == pytest.approx(collapsed, abs=1)
-    assert page.locator(".dashboard-tabs").evaluate("shell => shell.offsetTop") == pytest.approx(tabs_top, abs=1)
-    expect(toggle).to_be_focused()
-    expect(content).to_be_hidden()
-    for tab in ("aging-panel", "risk-panel", "trends-panel", "staff-panel", "staff-date-panel", "exceptions-panel"):
-        page.locator("#tab-" + tab).click()
+    trigger = page.get_by_role('button', name='Process guide', exact=True)
+    guide = page.get_by_role('dialog', name='Transcript Evaluation Workflow Legend')
+    assert page.locator('#overview-panel dialog').count() == 0
+    assert not trigger.get_attribute('aria-expanded')
+    for tab in ('overview-panel', 'operations-panel', 'aging-panel', 'risk-panel',
+                'evaluation-types-panel', 'trends-panel', 'staff-panel',
+                'staff-date-panel', 'exceptions-panel'):
+        page.locator('#tab-' + tab).click()
         _settled(page)
-        assert page.locator(".js-plotly-plot:visible").evaluate_all("""plots => plots.every(plot =>
-          Math.abs(plot._fullLayout.width - plot.clientWidth) < 2)""")
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    if artifact_dir:
-        guide.screenshot(path=str(Path(artifact_dir) / f"guide-collapsed-{width}.png"))
+        trigger.scroll_into_view_if_needed()
+        before = page.evaluate('({hash: location.hash, y: scrollY})')
+        height = page.locator('#' + tab).bounding_box()['height']
+        trigger.click()
+        expect(guide).to_be_visible()
+        expect(guide.get_by_role('button', name='Close', exact=True)).to_be_focused()
+        expect(guide.locator('.legend-item')).to_have_count(6)
+        expect(page.locator('#tab-' + tab)).to_have_attribute('aria-selected', 'true')
+        if width > 900:
+            assert page.locator('.dashboard-sidebar').bounding_box()['y'] == pytest.approx(76, abs=1)
+        assert guide.evaluate('''dialog => {
+          const rect = dialog.getBoundingClientRect();
+          return rect.left >= 15 && rect.top >= 15 && rect.right <= innerWidth - 15
+            && rect.bottom <= innerHeight - 15;
+        }''')
+        if width == 390:
+            assert guide.evaluate('dialog => dialog.scrollHeight > dialog.clientHeight')
+            guide.evaluate('dialog => dialog.scrollTop = dialog.scrollHeight')
+            expect(guide.locator('.legend-item').last).to_be_in_viewport()
+        artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
+        if artifact_dir and tab == 'operations-panel':
+            page.screenshot(path=str(Path(artifact_dir) / f'guide-modal-{width}.png'))
+        if tab == 'exceptions-panel':
+            guide.get_by_role('button', name='Close', exact=True).click()
+        else:
+            page.keyboard.press('Escape')
+        expect(guide).to_be_hidden()
+        expect(trigger).to_be_focused()
+        assert page.evaluate('({hash: location.hash, y: scrollY})') == before
+        assert page.locator('#' + tab).bounding_box()['height'] == height
+        assert page.locator('.js-plotly-plot:visible').evaluate_all('''plots => plots.every(plot =>
+          Math.abs(plot._fullLayout.width - plot.clientWidth) < 2)''')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
 
 
-def test_process_guide_handles_reversal_resize_reduced_motion_and_print(page, tmp_path):
-    _open(page, _report(tmp_path / "report.html"))
-    toggle = page.locator(".legend-toggle")
-    toggle.evaluate("""async button => {
-      button.click();
-      await new Promise(requestAnimationFrame);
-      button.click();
-      await new Promise(requestAnimationFrame);
-      button.click();
-    }""")
-    page.set_viewport_size({"width": 390, "height": 700})
-    page.wait_for_function("() => !document.querySelector('.legend-card').getAnimations({subtree: true}).length")
-    expect(toggle).to_have_attribute("aria-expanded", "true")
-    assert page.locator("#workflow-legend-content").evaluate("el => el.scrollHeight <= el.clientHeight + 1")
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    page.emulate_media(reduced_motion="reduce")
-    toggle.press("Space")
-    expect(toggle).to_have_attribute("aria-expanded", "false")
-    expect(page.locator("#workflow-legend-content")).to_be_hidden()
-    assert page.locator(".legend-card").evaluate("el => !el.getAnimations({subtree: true}).length")
-    page.emulate_media(reduced_motion="no-preference")
-    # Both browser printing and Save as PDF must finish an in-flight guide animation.
-    toggle.evaluate("button => button.click()")
-    page.evaluate("window.dispatchEvent(new Event('beforeprint'))")
-    assert page.locator(".legend-card").evaluate("el => !el.getAnimations({subtree: true}).length")
-    toggle.evaluate("button => button.click()")
-    _prepare(page)
-    page.emulate_media(media="print")
-    expect(toggle).to_be_hidden()
-    expect(page.locator(".legend-item:visible")).to_have_count(6)
-    page.evaluate("window.dispatchEvent(new Event('afterprint'))")
-    page.emulate_media(media="screen")
-    expect(toggle).to_have_attribute("aria-expanded", "false")
-    expect(page.locator("#workflow-legend-content")).to_be_hidden()
+@pytest.mark.parametrize('width,height', [(1440, 900), (1024, 600)])
+def test_sidebar_fills_viewport_with_utilities_at_bottom_while_scrolling(page, tmp_path, width, height):
+    page.set_viewport_size({'width': width, 'height': height})
+    _open(page, _report(tmp_path / 'sidebar.html'))
+    sidebar = page.locator('.dashboard-sidebar')
+    timestamp = sidebar.locator('.sidebar-generated-at')
+    expect(timestamp).to_have_text(page.locator('.generated-at').inner_text())
+    assert timestamp.evaluate('p => parseFloat(getComputedStyle(p).fontSize)') <= 12
+    for section in ('overview-panel', 'trends-panel', 'overview-panel'):
+        page.locator('#tab-' + section).click()
+        _settled(page)
+        page.evaluate("window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'})")
+        bounds = sidebar.bounding_box()
+        assert bounds['y'] == pytest.approx(76, abs=1)
+        assert bounds['height'] == height - 76
+        button = sidebar.locator('#save-pdf').bounding_box()
+        guide = sidebar.locator('#show-workflow-guide').bounding_box()
+        generated = timestamp.bounding_box()
+        credit = sidebar.locator('.authorship-credit')
+        expect(credit).to_be_in_viewport()
+        assert credit.locator('strong').evaluate('e => getComputedStyle(e).fontSize === getComputedStyle(e).getPropertyValue("--font-size-md").trim()')
+        assert credit.evaluate('''e => {
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--muted)';
+          e.append(probe);
+          const matches = getComputedStyle(e).color === getComputedStyle(probe).color;
+          probe.remove();
+          return matches;
+        }''')
+        assert guide['y'] + guide['height'] < credit.bounding_box()['y']
+        assert credit.bounding_box()['y'] + credit.bounding_box()['height'] < generated['y']
+        assert button['y'] + button['height'] < guide['y']
+        assert guide['y'] + guide['height'] < generated['y']
+        assert 0 <= height - generated['y'] - generated['height'] <= 24
+        assert sidebar.locator('[data-tab-list="sections"]').bounding_box()['y'] >= 0
 
 
-def test_guide_resize_with_visible_scrollbars_and_reduced_motion(page, tmp_path):
-    page.set_viewport_size({"width": 1440, "height": 2000})
-    page.emulate_media(reduced_motion="reduce")
-    _open(page, _report(tmp_path / "scrollbars.html"))
-    page.add_style_tag(content="::-webkit-scrollbar { width: 17px; }")
-    page.locator("#tab-staff-panel").click()
+def test_print_closes_the_modal_and_includes_the_complete_guide(page, tmp_path):
+    _open(page, _report(tmp_path / 'report.html'))
+    page.locator('#tab-staff-panel').click()
+    page.locator('#tab-staff-date-panel').click()
     _settled(page)
-    toggle = page.locator(".legend-toggle")
-    shell = page.locator(".dashboard-shell")
-    closed_height = shell.bounding_box()["height"]
-    toggle.evaluate("button => button.click()")
-    open_height = shell.bounding_box()["height"]
-    toggle.evaluate("button => button.click()")
-    page.set_viewport_size({"width": 1440, "height": int((closed_height + open_height) / 2)})
-    plot_fits = """() => {
-      const plot = document.getElementById('plot-submitted-by-workload');
-      return Math.abs(plot._fullLayout.width - plot.clientWidth) < 1;
-    }"""
-    page.wait_for_function(plot_fits)
-    for expanded in (True, False):
-        toggle.evaluate("button => button.click()")
-        expect(toggle).to_have_attribute("aria-expanded", str(expanded).lower())
-        page.wait_for_function("width => document.documentElement.clientWidth === width",
-                               arg=1423 if expanded else 1440)
-        page.wait_for_function(plot_fits)
+    page.locator('#show-workflow-guide').click()
+    expect(page.locator('#workflow-guide')).to_be_visible()
+    page.evaluate("window.dispatchEvent(new Event('beforeprint'))")
+    expect(page.locator('#workflow-guide')).to_be_hidden()
+    _prepare(page)
+    page.emulate_media(media='print')
+    expect(page.locator('.legend-item:visible')).to_have_count(6)
+    expect(page.locator('#close-workflow-guide')).to_be_hidden()
+    expect(page.locator('.dashboard-sidebar')).to_be_hidden()
+    page.evaluate("window.dispatchEvent(new Event('afterprint'))")
+    page.emulate_media(media='screen')
+    expect(page.locator('#workflow-guide')).to_be_hidden()
+    expect(page.locator('#staff-date-panel')).to_be_visible()
 
 
 def _assert_framed(page, tip):
@@ -174,8 +188,10 @@ def test_kpi_tooltips_fit_edges_and_overlay_the_tabs(page, tmp_path, width, heig
 
 
 def test_tooltips_flip_track_scroll_and_stay_hoverable(page, tmp_path):
-    page.set_viewport_size({"width": 1440, "height": 600})
+    page.set_viewport_size({"width": 1440, "height": 400})
     _open(page, _report(tmp_path / "report.html"))
+    # Allow this geometry check to place a card against either viewport edge.
+    page.add_style_tag(content='#overview-panel { min-height: 1200px; }')
     trigger = page.locator(".kpi .info-button").first
     tip = page.locator("#" + trigger.get_attribute("aria-describedby"))
     trigger.evaluate("""button => window.scrollTo({
@@ -199,7 +215,7 @@ def test_tooltips_flip_track_scroll_and_stay_hoverable(page, tmp_path):
       const trigger = document.querySelector('.kpi .info-button');
       return Math.abs(document.getElementById(id).getBoundingClientRect().top - trigger.getBoundingClientRect().bottom - 8) < 1;
     }""", arg=tip.get_attribute("id"))
-    page.evaluate("window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'})")
+    page.locator('#tab-trends-panel').click()
     expect(tip).to_be_hidden()
 
 
@@ -207,6 +223,7 @@ def test_tooltips_flip_track_scroll_and_stay_hoverable(page, tmp_path):
 def test_chart_table_and_long_tooltips_escape_card_clipping(page, tmp_path, width):
     page.set_viewport_size({"width": width, "height": 700})
     _open(page, _report(tmp_path / "report.html"))
+    page.locator('#tab-operations-panel').click()
     for tab in ("case-metrics-panel", "aging-panel", "risk-panel", "evaluation-types-panel",
                 "trends-panel", "staff-panel", "staff-date-panel", "exceptions-panel"):
         page.locator("#tab-" + tab).click()
@@ -226,7 +243,8 @@ def test_chart_table_and_long_tooltips_escape_card_clipping(page, tmp_path, widt
     assert tip.evaluate("tip => getComputedStyle(tip).overflowY") == "auto"
     tip.evaluate("tip => tip.scrollTop = tip.scrollHeight")
     page.wait_for_function("""id => document.getElementById(id).scrollTop > 0""", arg=tip.get_attribute("id"))
-    page.locator("#tab-operations-panel").click()
+    page.locator("#tab-operations-panel").focus()
+    page.keyboard.press("Enter")
     expect(tip).to_be_hidden()
 
 
@@ -324,8 +342,69 @@ def test_reduced_motion_and_print_finish_pending_transitions(page, tmp_path):
     _prepare(page)
     assert page.locator(".tab-panels[style*=height]").count() == 0
     page.emulate_media(media="print")
-    assert page.locator('[data-tab-panel="sections"]:visible').count() == 5
+    assert page.locator('[data-tab-panel="sections"]:visible').count() == 7
     expect(page.locator("#dashboard-tooltip-layer")).to_be_hidden()
     page.evaluate("window.dispatchEvent(new Event('afterprint'))")
     page.emulate_media(media="screen")
     expect(page.locator("#trends-panel")).to_be_visible()
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+@pytest.mark.parametrize('backlog,idle,expected', [(7, 3, ['a', 'b']), (9, 4, ['b'])])
+def test_overview_risk_action_opens_matching_list_and_restores_history(page, tmp_path, width, backlog, idle, expected):
+    import pandas as pd
+    from workflow_dashboard.config import DashboardConfig
+    from workflow_dashboard.dashboard_html import render_dashboard
+    from .test_age_idle_action_matrix import _case, _analytics
+
+    cases = [
+        _case('a', age_days=8, idle_days=3),
+        _case('b', age_days=10, idle_days=4),
+        _case('c', age_days=8, idle_days=2),
+        _case('missing', age_days=None, idle_days=4),
+    ]
+    analytics = _analytics(cases, DashboardConfig(backlog_age_days=backlog, stale_idle_days=idle))
+    path = render_dashboard(df=pd.DataFrame(cases), analytics=analytics, history=pd.DataFrame(),
+                            owner_history=pd.DataFrame(), output_path=tmp_path / 'actions.html')
+    page.set_viewport_size({'width': width, 'height': 900})
+    _open(page, path)
+    action = page.locator('.overview-action-risk')
+    expect(action.locator('.action-count')).to_have_text(str(len(expected)))
+    action.focus()
+    page.keyboard.press('Enter')
+
+    def assert_list():
+        expect(page.locator('#risk-panel')).to_be_visible()
+        _settled(page)
+        expect(page.locator('#action-group-backlog_stale')).to_have_attribute('aria-pressed', 'true')
+        assert sorted(page.locator('#age-idle-action-rows td:first-child').all_text_contents()) == expected
+        heading = page.locator('#age-idle-action-drilldown-title')
+        expect(heading).to_be_focused()
+        expect(heading).to_be_in_viewport()
+        assert heading.bounding_box()['y'] >= (76 if width > 900 else 0)
+
+    assert_list()
+    page.go_back()
+    expect(page.locator('#overview-panel')).to_be_visible()
+    page.go_forward()
+    assert_list()
+    page.locator('#age-idle-action-clear').click()
+    expect(page.locator('#age-idle-action-drilldown')).to_be_hidden()
+    page.reload()
+    assert_list()
+    page.locator('#tab-overview-panel').click()
+    _settled(page)
+    page.locator('.overview-action[href="#problem-rows-table"]').click()
+    expect(page.locator('#exceptions-panel')).to_be_visible()
+    expect(page.locator('#problem-rows-table')).to_be_focused()
+
+
+def test_empty_overview_actions_do_not_offer_unavailable_risk_cases(page, tmp_path):
+    _open(page, _report(tmp_path / 'empty-actions.html', 'empty'))
+    risk = page.locator('.overview-action-risk')
+    expect(risk).to_have_attribute('aria-disabled', 'true')
+    assert risk.get_attribute('href') is None
+    expect(risk.locator('.action-count')).to_have_text('0')
+    page.locator('.overview-action[href="#problem-rows-table"]').click()
+    expect(page.locator('#exceptions-panel')).to_be_visible()
+    expect(page.locator('#problem-rows-table .empty-table')).to_be_visible()

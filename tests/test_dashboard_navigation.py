@@ -23,64 +23,66 @@ def test_navigation_preserves_report_headings_and_components(tmp_path):
     for chart in content.CHART_CONTENT.values():
         title = chart.formatted(content.PresentationContext()).title
         assert f'<h2>{title}</h2>' in markup
-    assert markup.count(' data-tab-panel="sections"') == 5
-    assert markup.count(' data-tab-panel="operations"') == 3
+    assert markup.count(' data-tab-panel="sections"') == 7
+    assert markup.count(' data-tab-panel="operations"') == 2
     assert markup.count(' data-tab-panel="staff"') == 2
-    assert markup.count('class="plotly-graph-div') == 13
+    assert markup.count('class="plotly-graph-div') == 15
+    assert markup.count('<dialog ') == 1
+    for obsolete in ('Hide guide', 'legend-toggle', 'guide-ready', 'is-collapsed', 'setGuideExpanded'):
+        assert obsolete not in markup
     assert "Up to 100" not in markup
 
 
-@pytest.mark.parametrize('width', [1680, 1440, 1401, 1280, 1024, 720, 390])
+@pytest.mark.parametrize('width', [3440, 2560, 1680, 1440, 1401, 1280, 1024, 720, 390])
 @pytest.mark.parametrize('scenario', ['sample', 'empty', 'stress'])
-def test_overview_cards_are_compact_with_centered_headings_and_values(page, tmp_path, width, scenario):
+def test_overview_metrics_are_readable_and_responsive(page, tmp_path, width, scenario):
     page.set_viewport_size({'width': width, 'height': 1000})
     _open(page, _report(tmp_path / 'layout.html', scenario))
-    if scenario == 'stress':
-        page.locator('.kpi strong').first.evaluate("value => value.textContent = '10,000'")
-        page.locator('.kpi strong').nth(5).evaluate("value => value.textContent = '365.0 days'")
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    cards = page.locator('.kpi').evaluate_all('''cards => cards.map(card => {
-      const bounds = card.getBoundingClientRect();
-      const label = card.querySelector('.kpi-label').getBoundingClientRect();
-      const help = card.querySelector('.help-control').getBoundingClientRect();
-      const value = card.querySelector('strong').getBoundingClientRect();
-      return {top: bounds.top, width: bounds.width, height: bounds.height,
-        valueTop: value.top - bounds.top,
-        headingCentered: Math.abs((label.left + help.right) / 2 - bounds.left - bounds.width / 2) < 1,
-        headingAlign: getComputedStyle(card.querySelector('.kpi-heading')).textAlign,
-        headingJustify: getComputedStyle(card.querySelector('.kpi-heading')).justifyContent,
-        valueAlign: getComputedStyle(card.querySelector('strong')).textAlign,
-        centered: Math.abs(value.left + value.width / 2 - bounds.left - bounds.width / 2) < 1,
-        padding: getComputedStyle(card).padding,
-        fits: card.scrollWidth <= card.clientWidth};
-    })''')
-    for card in cards:
-        assert card['centered'] and card['fits']
-        assert card['padding'] == '8px 12px'
-        assert card['headingCentered']
-        assert card['headingAlign'] == 'center'
-        assert card['headingJustify'] == 'center'
-        assert card['valueAlign'] == 'center'
-        assert card['height'] <= (114 if width > 1400 else 100)
-        assert abs(card['height'] - cards[0]['height']) < 1
-        assert abs(card['width'] - cards[0]['width']) < 1
-        assert abs(card['valueTop'] - cards[0]['valueTop']) < 1
-    for group in ['sections', 'operations']:
-        link = page.locator(f'[data-tab-list="{group}"] a').first
-        assert link.evaluate(
-            'link => getComputedStyle(link).alignItems'
-        ) == 'flex-end'
-        assert link.bounding_box()['height'] == 34
-        assert link.evaluate('''link => {
-          const text = document.createRange();
-          text.selectNodeContents(link);
-          return text.getBoundingClientRect().top - link.getBoundingClientRect().top;
-        }''') <= 12
+    expect(page.locator('.kpi-grid .kpi')).to_have_count(8)
+    assert page.locator('.sidebar-label, .snapshot-context').count() == 0
+    if width > 900:
+        sidebar = page.locator('.dashboard-sidebar').bounding_box()
+        assert sidebar['x'] == pytest.approx(0, abs=1)
+        assert sidebar['width'] == 208
+        assert page.locator('#overview-panel').bounding_box()['x'] == 240
+    assert page.locator('.kpi-grid').evaluate(
+        'grid => getComputedStyle(grid).gridTemplateColumns.split(" ").length'
+    ) == (4 if width >= 1280 else 2 if width > 520 else 1)
+    assert page.locator('.kpi').evaluate_all('''cards => cards.every(card =>
+      card.scrollWidth <= card.clientWidth && card.querySelector('strong').getBoundingClientRect().height > 0)''')
+    expect(page.locator('.dashboard-sidebar .authorship-credit')).to_have_text(
+        'Developed by Sucharith Madhusoodana')
+    expect(page.locator('.dashboard-header .authorship-credit')).to_be_hidden()
+    assert page.locator('.overview-charts .js-plotly-plot').count() == 2
+    assert page.locator('#plot-overview-backlog').count() == 0
+    actions = page.locator('.overview-actions').bounding_box()
+    charts = page.locator('.overview-charts').bounding_box()
+    assert actions['width'] == pytest.approx(charts['width'], abs=1)
+    page.wait_for_function('''() => [...document.querySelectorAll('.overview-charts .js-plotly-plot')]
+      .every(plot => Math.abs(plot._fullLayout.width - plot.clientWidth) < 2)''')
+    if os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR') and (scenario == 'sample' or width in (1440, 390)):
+        page.screenshot(path=str(Path(os.environ['DASHBOARD_PDF_ARTIFACT_DIR']) / f'dashy-{scenario}-{width}.png'), full_page=True)
+    sidebar_link = page.locator('[data-tab-list="sections"] a').first
+    assert sidebar_link.bounding_box()['height'] >= 44
+    assert sidebar_link.evaluate('link => getComputedStyle(link).alignItems') == 'center'
+    page.locator('#tab-operations-panel').click()
+    link = page.locator('[data-tab-list="operations"] a').first
+    assert link.evaluate(
+        'link => getComputedStyle(link).alignItems'
+    ) in ('flex-end', 'flow-end')
+    assert link.bounding_box()['height'] == 34
+    assert link.evaluate('''link => {
+      const text = document.createRange();
+      text.selectNodeContents(link);
+      return text.getBoundingClientRect().top - link.getBoundingClientRect().top;
+    }''') <= 12
     assert page.locator('.dashboard-tabs').evaluate(
         'shell => getComputedStyle(shell).marginTop'
-    ) == '12px'
+    ) == '0px'
     artifact_dir = os.environ.get('DASHBOARD_PDF_ARTIFACT_DIR')
     if artifact_dir and scenario == 'sample':
+        page.locator('#tab-overview-panel').click()
         page.locator('.kpi-grid').screenshot(path=str(Path(artifact_dir) / f'overview-{width}.png'))
         page.locator('[data-tab-list="sections"]').screenshot(path=str(Path(artifact_dir) / f'tabs-{width}.png'))
 
@@ -90,6 +92,7 @@ def test_compact_tabs_keep_large_touch_targets(browser, tmp_path):
                              viewport={'width': 390, 'height': 700}, offline=True) as context:
         page = context.new_page()
         _open(page, _report(tmp_path / 'touch-tabs.html'))
+        page.locator('#tab-operations-panel').click()
         for group in ['sections', 'operations']:
             link = page.locator(f'[data-tab-list="{group}"] a').first
             assert link.bounding_box()['height'] >= 44
@@ -97,22 +100,36 @@ def test_compact_tabs_keep_large_touch_targets(browser, tmp_path):
 
 def test_navigation_keyboard_and_remembered_drilldown(page, tmp_path):
     _open(page, _report(tmp_path / "report.html"))
-    expect(page.locator('#case-metrics-panel')).to_be_visible()
+    expect(page.locator('#overview-panel')).to_be_visible()
+    expect(page.locator('#case-metrics-panel')).to_be_hidden()
     expect(page.locator('#trends-panel')).to_be_hidden()
     primary = page.get_by_role('tablist', name='Dashboard sections')
-    expect(primary.get_by_role('tab')).to_have_count(5)
-    primary.get_by_role('tab', name='Operational Workload', exact=True).focus()
+    expect(primary.get_by_role('tab')).to_have_count(7)
+    expect(primary).to_have_attribute('aria-orientation', 'vertical')
+    assert primary.get_by_role('tab').all_text_contents() == [
+        'Dashboard Overview', 'Operational Workload', 'Risk Overview',
+        'Evaluation Types', 'Trends', 'Submission Activity', 'Observations',
+    ]
+    primary.get_by_role('tab', name='Dashboard Overview', exact=True).focus()
+    page.keyboard.press('ArrowDown')
+    expect(page.locator('#tab-operations-panel')).to_be_focused()
     page.keyboard.press('End')
     expect(page.locator('#tab-exceptions-panel')).to_be_focused()
-    expect(page.locator('#case-metrics-panel')).to_be_visible()
+    expect(page.locator('#overview-panel')).to_be_visible()
     page.keyboard.press('Space')
     expect(page.locator('#exceptions-panel')).to_be_visible()
     page.keyboard.press('Home')
     page.keyboard.press('Enter')
+    expect(page.locator('#overview-panel')).to_be_visible()
+    page.locator('#tab-operations-panel').click()
+    expect(page.locator('#overview-panel')).to_be_hidden()
+    expect(page.locator('#workflow-guide')).to_be_hidden()
     page.locator('#tab-case-metrics-panel').focus()
     page.keyboard.press('ArrowLeft')
-    expect(page.locator('#tab-risk-panel')).to_be_focused()
+    expect(page.locator('#tab-aging-panel')).to_be_focused()
     page.keyboard.press('Enter')
+    expect(page.locator('#aging-panel')).to_be_visible()
+    page.locator('#tab-risk-panel').click()
     expect(page.locator('#risk-panel')).to_be_visible()
     page.locator('[data-action-bucket]:not([disabled])').first.click()
     selected = page.locator('#age-idle-action-rows').inner_text()
@@ -122,7 +139,7 @@ def test_navigation_keyboard_and_remembered_drilldown(page, tmp_path):
     page.locator('#tab-staff-date-panel').click()
     expect(page.locator('#staff-date-panel')).to_be_visible()
     expect(page.locator('#staff-volume-panel')).to_be_hidden()
-    page.locator('#tab-operations-panel').click()
+    page.locator('#tab-risk-panel').click()
     expect(page.locator('#risk-panel')).to_be_visible()
     assert page.locator('#age-idle-action-rows').inner_text() == selected
     page.locator('#tab-staff-panel').click()
@@ -141,13 +158,14 @@ def test_deep_links_history_and_view_list(page, tmp_path):
     page.go_back()
     expect(page.locator('#risk-panel')).to_be_visible()
     page.go_back()
-    expect(page.locator('#case-metrics-panel')).to_be_visible()
+    expect(page.locator('#overview-panel')).to_be_visible()
     page.go_forward()
     expect(page.locator('#risk-panel')).to_be_visible()
     page.goto(path.as_uri() + '#staff-date-panel')
     expect(page.locator('#staff-date-panel')).to_be_visible()
     page.reload()
     expect(page.locator('#staff-date-panel')).to_be_visible()
+    page.locator('#tab-overview-panel').click()
     page.locator('.kpi-link').click()
     expect(page.locator('#exceptions-panel')).to_be_visible()
     expect(page.locator('#problem-rows-table')).to_be_focused()
@@ -160,6 +178,7 @@ def test_age_donut_rounding_matches_legend_and_kpi(page, tmp_path):
     path = render_dashboard(df=cases, analytics=analytics, history=pd.DataFrame(),
                             owner_history=pd.DataFrame(), output_path=tmp_path / "rounding.html")
     _open(page, path)
+    page.locator('#tab-operations-panel').click()
     page.locator('#tab-aging-panel').click()
     expect(page.locator('#plot-aging-by-step .slicetext').first).to_have_text('23.2 days')
     expect(page.locator('[aria-controls="plot-aging-by-step"] strong')).to_have_text('23.2 days')
@@ -187,6 +206,7 @@ def test_drilldown_rounding_matches_chart_and_kpi(page, tmp_path):
 def test_compact_layout_and_plot_resize(page, tmp_path, width):
     page.set_viewport_size({'width': width, 'height': 900})
     _open(page, _report(tmp_path / 'report.html'))
+    page.locator('#tab-operations-panel').click()
     columns = 1
     assert page.locator('.case-metrics-grid').evaluate(
         'grid => getComputedStyle(grid).gridTemplateColumns.split(" ").length'
@@ -219,8 +239,9 @@ def test_compact_layout_and_plot_resize(page, tmp_path, width):
     if artifact_dir:
         page.locator('#case-metrics-panel').screenshot(path=str(Path(artifact_dir) / f'metrics-{width}.png'))
     page.locator('#tab-trends-panel').click()
-    page.evaluate("window.scrollTo({top: document.querySelector('.dashboard-tabs').offsetTop + 150, behavior: 'instant'})")
-    page.wait_for_function("() => Math.abs(document.querySelector('[data-tab-list=sections]').getBoundingClientRect().top) < 2")
+    if width > 900:
+        page.evaluate("window.scrollTo({top: document.querySelector('.dashboard-tabs').offsetTop + 150, behavior: 'instant'})")
+        page.wait_for_function("() => Math.abs(document.querySelector('.dashboard-sidebar').getBoundingClientRect().top - 76) < 2")
 
 
 def test_all_observations_scroll_and_print_without_changing_selection(page, tmp_path):
@@ -234,8 +255,8 @@ def test_all_observations_scroll_and_print_without_changing_selection(page, tmp_
     scroll.evaluate('table => table.scrollTop = table.scrollHeight')
     assert scroll.evaluate('table => table.scrollTop > 0')
     page.emulate_media(media='print')
-    assert page.locator('[data-tab-panel="sections"]:visible').count() == 5
-    assert page.locator('[data-tab-panel="operations"]:visible').count() == 3
+    assert page.locator('[data-tab-panel="sections"]:visible').count() == 7
+    assert page.locator('[data-tab-panel="operations"]:visible').count() == 2
     assert page.locator('[data-tab-panel="staff"]:visible').count() == 2
     expect(page.locator('.dashboard-tabbar').first).to_be_hidden()
     expect(page.locator('#age-idle-action-drilldown')).to_be_hidden()
@@ -250,11 +271,12 @@ def test_report_content_remains_readable_without_javascript(browser, tmp_path):
     with browser.new_context(java_script_enabled=False, offline=True) as context:
         value = context.new_page()
         value.goto(path.as_uri())
-        assert value.locator('[data-tab-panel="sections"]:visible').count() == 5
+        assert value.locator('[data-tab-panel="sections"]:visible').count() == 7
         expect(value.locator('.dashboard-tabbar').first).to_be_hidden()
         expect(value.locator('#problem-rows-table')).to_be_visible()
+        expect(value.locator('#workflow-guide')).to_be_hidden()
+        value.emulate_media(media='print')
         expect(value.locator('.legend-item:visible')).to_have_count(6)
-        expect(value.locator('.legend-toggle')).to_be_hidden()
 
 
 def test_failed_enhancement_restores_the_readable_report(page, tmp_path):
@@ -264,17 +286,18 @@ def test_failed_enhancement_restores_the_readable_report(page, tmp_path):
     };""")
     page.goto(path.as_uri())
     page.wait_for_function('() => window.navigationFailureReached === true')
-    assert page.locator('[data-tab-panel="sections"]:visible').count() == 5
+    assert page.locator('[data-tab-panel="sections"]:visible').count() == 7
     expect(page.locator('.dashboard-tabbar').first).to_be_hidden()
     expect(page.locator('#operations-panel')).to_have_attribute('aria-labelledby', 'operations-title')
     page.locator('.kpi-link').click()
-    assert page.locator('[data-tab-panel="sections"]:visible').count() == 5
+    assert page.locator('[data-tab-panel="sections"]:visible').count() == 7
 
 
 @pytest.mark.parametrize('width', [1440, 1280, 1024, 720, 390])
 def test_readable_chart_categories_and_risk_frame(page, tmp_path, width):
     page.set_viewport_size({'width': width, 'height': 900})
     _open(page, _report(tmp_path / 'report.html'))
+    page.locator('#tab-operations-panel').click()
     for panel, plot_id in [('case-metrics-panel', 'plot-in-the-works-by-step'),
                            ('aging-panel', 'plot-aging-by-step')]:
         page.locator('#tab-' + panel).click()
@@ -322,7 +345,7 @@ def test_footer_tracks_content_and_returns_to_top(page, tmp_path):
         page.locator('#tab-' + panel).click()
         page.wait_for_function("() => !document.querySelector('.dashboard-tabs').style.minHeight")
         gap = page.evaluate("""() => document.querySelector('.page-footer').getBoundingClientRect().top
-          - document.querySelector('.dashboard-tabs').getBoundingClientRect().bottom""")
+          - document.querySelector('[data-tab-panel="sections"]:not([hidden])').getBoundingClientRect().bottom""")
         assert gap == pytest.approx(24, abs=1)
         assert page.locator('.dashboard-tabs').evaluate("e => getComputedStyle(e).minHeight") == '0px'
     page.locator('.jump-to-top').click()
